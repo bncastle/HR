@@ -1,0 +1,10 @@
+[
+	{
+		"name":"d",
+		"cmds": ["dir"]
+	},
+	{
+		"name":"j",
+		"cmds":[":d","echo 'hello'"]
+	}
+]
