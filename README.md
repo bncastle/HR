@@ -14,10 +14,10 @@ This will build HR as a cpp project, and the .exe will be found in ```bin``` dir
 
 ## Usage
 
-HR uses a ```tasks.json``` file located in the root of the directory where you want to run the tasks. Each
+HR uses a ```hr.json``` file located in the root of the directory where you want to run the tasks. Each
 task is a JSON object containing a "name" property and a "cmds" array where command strings are specified.
 Each task can be composed of just one command, multiple commands, or other tasks can also be specified as 
-a command.An example ```tasks.json``` file is shown below:
+a command.An example ```hr.json``` file is shown below:
 
 ```json
 

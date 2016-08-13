@@ -27,8 +27,8 @@ typedef Task =
 
 class HR
 {
-	static inline var VERSION = "0.1";
-	static inline var CFG_FILE = "tasks.json";
+	static inline var VERSION = "0.2";
+	static inline var CFG_FILE = "hr.json";
 	static inline var ERR_TASK_NO_FOUND = -1025;
 	var tasks:Array<Task>;
 	
@@ -47,7 +47,7 @@ class HR
 			
 			if (!HR.CheckForConfigFile(cfgFile))
 			{
-				Sys.println("Make a tasks.json file and put it in your project directory.");
+				Sys.println('Make a $CFG_FILE file and put it in your project directory.');
 				Sys.println("EX: [ {\"name\":\"task1\",\"cmds\": [\"cmd1\", \"cmd2\"] } ]");
 				Sys.println("You can a task by specifying its name");
 				Sys.println("If you want to run a task within a task, precede the task label by ':'");
