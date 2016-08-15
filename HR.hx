@@ -27,7 +27,7 @@ typedef Task =
 
 class HR
 {
-	static inline var VERSION = "0.2";
+	static inline var VERSION = "0.21";
 	static inline var CFG_FILE = "hr.json";
 	static inline var ERR_TASK_NO_FOUND = -1025;
 	var tasks:Array<Task>;
@@ -131,7 +131,13 @@ class HR
 						if(cmd.charAt(0) == ":")
 						{
 							var retcode:Int = RunTask(cmd.substr(1));
-							if (retcode != 0) return retcode;
+							if (retcode == ERR_TASK_NO_FOUND)
+							{ 
+								Sys.println('Unable to run task: ${cmd.substr(1)} from task: $name. The ${cmd.substr(1)} task does not exist!');
+								return -1;
+							}
+							else if(retcode != 0)
+								return retcode;
 						}
 						else
 						{
