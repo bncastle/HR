@@ -1,0 +1,4 @@
+-main HR 
+--no-traces
+-cpp bin
+-dce full

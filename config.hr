@@ -1,0 +1,6 @@
+#This is a comment
+variables{}
+
+tasks {
+    build-util = haxe build.hxml && copy /Y bin\Hr.exe C:\utils
+}
