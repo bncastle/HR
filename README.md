@@ -54,7 +54,7 @@ Available tasks can be listed by typing:
 
 `HR -t `
 
-Verbose mode can be enabled by using the `-t` switch:
+Verbose mode can be enabled by using the `-v` switch:
 
 `HR -v build-zip`
 
