@@ -16,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.22";
+	static inline var VERSION = "0.23";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NO_FOUND = -1025;
 
@@ -46,11 +46,6 @@ class HR
 			if (!HR.CheckForConfigFile(cfgFile))
 			{
 				Sys.println('Make a $CFG_FILE file and put it in your project directory.');
-				Sys.println("EX: [ {\"taskName\":\"task1\",\"cmds\": [\"cmd1\", \"cmd2\"] } ]");
-				Sys.println("You can a task by specifying its taskName");
-				Sys.println("If you want to run a task within a task, precede the task label by ':'");
-				Sys.println("If you don't want task's command to be displayed when its run, add '!' to the beginning of the command");
-				Sys.println("HR.exe task1");
 			}
 			return -1;
 		}
@@ -227,7 +222,7 @@ class HR
 		//Check for a valid config file
 		if (!FileSystem.exists(cfgFile))
 		{
-			Sys.print("Config file " + cfgFile + " doesn't exist.");
+			Sys.println("Config file " + cfgFile + " doesn't exist.");
 			return false;
 		}
 		return true;
