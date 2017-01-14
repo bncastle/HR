@@ -16,15 +16,15 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.23";
+	static inline var VERSION = "0.24";
 	static inline var CFG_FILE = "config.hr";
-	static inline var ERR_TASK_NO_FOUND = -1025;
+	static inline var ERR_TASK_NOT_FOUND = -1025;
 
 	var verbose:Bool = false;
 	var parser(default,null):HrParser;
 
 	//This holds any taks we are in the Process
-	//of running. A task is put on here if it depends on another 
+	//of running. A task is put on here if it depends on another
 	//task. This way we can check for cyclic references and catch them
 	var taskStack:Array<String>;
 
@@ -32,24 +32,29 @@ class HR
 	{
 		Sys.println('\nHR Version $VERSION: A task runner.');
 		Sys.println("Copyright 2016 Pixelbyte Studios");
-		
+
 		//Note this: We want the config file in the directory where we were invoked!
 		var cfgFile:String = Sys.getCwd() + CFG_FILE;
-		
+		var printTasks:Bool = false;
+
 		if (Sys.args().length < 1)
 		{
 			Sys.println("===================================");
 			Sys.println("Usage: HR.exe [-v] <task_taskName>");
 			Sys.println("-v prints out each command as it is executed");
-			Sys.println("-t (prints a list of valid tasks)");
-			
+			// Sys.println("-t (prints a list of valid tasks)");
+
 			if (!HR.CheckForConfigFile(cfgFile))
 			{
 				Sys.println('Make a $CFG_FILE file and put it in your project directory.');
+				return -1;
 			}
-			return -1;
+			else{
+				Sys.println("");
+				printTasks = true;
+			}
 		}
-		
+
 		var h = new HR();
 		var taskIndex = 0;
 
@@ -59,44 +64,46 @@ class HR
 			return -1;
 		}
 
-		//a -t flag says print all tasks in the file
-		if (Sys.args()[0] == "-t")
+		//print all tasks in the file
+		if (printTasks)
 		{
 			h.PrintAvailableTasks();
 			return -1;
 		}
-		else if (Sys.args()[0] == "-v")
+
+		if (Sys.args()[0] == "-v")
 		{
 			h.verbose = true;
 			taskIndex++;
 		}
 
 		var subTask:String = Sys.args()[taskIndex];
+		Sys.println(subTask);
 		var retCode:Int = h.RunTask(subTask);
-		if (retCode == ERR_TASK_NO_FOUND)
+		if (retCode == ERR_TASK_NOT_FOUND)
 		{
 			Sys.println('Task: $subTask not found!');
 			return -1;
 		}
 		else if ( retCode != 0)
 		{
-			Sys.println('Error running task: $subTask');
+			// Sys.println('Error running task: $subTask');
 			return -1;
 		}
-		
+
 		return retCode;
 	}
-	
-	public function new() 
-	{ 
+
+	public function new()
+	{
 		//Create a new parser
 		parser = new HrParser();
 		taskStack = new Array<String>();
 	}
-	
+
 	function ParseConfig(cfgFile:String): Bool
-	{	
-		return parser.Parse(cfgFile);		
+	{
+		return parser.Parse(cfgFile);
 	}
 
 	function RunTask(taskName: String):Int
@@ -104,27 +111,28 @@ class HR
 		var index = KeyValues.KeyIndex(taskName, parser.tasks);
 		if(index < 0){
 			Sys.println('No command found for task: $taskName');
-			return ERR_TASK_NO_FOUND;
+			return ERR_TASK_NOT_FOUND;
 		}
 
 		var task = parser.tasks[index];
 		var retCode:Int = 0;
 
 		for(i in 0...task.values.length){
-		
+
 			//See if the command is itself a task. If it is, run it
 			if(task.values[i].charAt(0) == ":")
 			{
 				var subTask = task.values[i].substr(1);
 				retCode = RunTask(subTask);
-				if (retCode == ERR_TASK_NO_FOUND)
-				{ 
+				if (retCode == ERR_TASK_NOT_FOUND)
+				{
 					Sys.println('Unable to run task: $subTask from task: $taskName. The $subTask task does not exist!');
 					taskStack.remove(taskName);
 					return -1;
 				}
 				else if(retCode != 0){
-					taskStack.remove(taskName);				
+					Sys.println('Error in sub-task: $subTask from task: $taskName. $subTask returned $retCode');
+					taskStack.remove(taskName);
 					return retCode;
 				}
 			}
@@ -162,6 +170,7 @@ class HR
 						//Run the dependency
 						retCode = RunTask(dependencies[i]);
 						if(retCode != 0){
+							Sys.println('Error running dependency: ${dependencies[i]} in $taskName');
 							taskStack.remove(taskName);
 							return retCode;
 						}
@@ -180,16 +189,22 @@ class HR
 				// var cmd = args.shift();
 				var proc = new Process(task.values[i]);
 				var output:String = proc.stdout.readAll().toString();
+				var err:String = proc.stderr.readAll().toString();
 				var retcode:Int = proc.exitCode();
 
-				Sys.println(output);
+				proc.close();
+
+				if(output.length > 0)
+					Sys.print(output);
+				if(err.length > 0)
+					Sys.print(err);
+
 				//May want to remove this later?
 				//if(output.length < 512)
 				//Trim the end of the output to remove any newline characters as that would
 				//totally screw up using the output of this task in another!
 				parser.AddResult(task.key, output.rtrim());
 
-				proc.close();
 
 				taskStack.remove(taskName);
 
@@ -207,16 +222,16 @@ class HR
 			Sys.println(t.key);
 		}
 	}
-	
+
 	//function IsTask(taskName:String)
 	//{
-	//	for (t in tasks) 
+	//	for (t in tasks)
 	//	{
 	//		if (taskName.toLowerCase() == t.taskName.toLowerCase()) return true;
 	//	}
 	//	return false;
 	//}
-	
+
 	static function CheckForConfigFile(cfgFile:String): Bool
 	{
 		//Check for a valid config file
@@ -266,7 +281,7 @@ class KeyValues{
 			values[i] = repl.map(values[i], function (reg:EReg) {
 				//Remove the surrounding '|' and the '@'
 				var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
-				
+
 				for(i in 0...replacements.length){
 					if(variableName == replacements[i].key)
 					{
@@ -293,7 +308,7 @@ class KeyValues{
 			repl.map(values[i], function(reg:EReg){
 				//Remove the surrounding '|' and the '@'
 				var variableName = reg.matched(1).substring(2,reg.matched(1).length - 1);
-				
+
 				//Is the variable we just found in the tasks list?
 				var index = KeyValues.KeyIndex(variableName, tasks);
 				if(index > - 1 && dependents.indexOf(variableName) == -1){
@@ -332,7 +347,7 @@ class KeyValues{
 // }
 
 class HrParser{
-	
+
 	static inline var VARIABLES_SECTION = "variables";
 	static inline var TASKS_SECTION = "tasks";
 
@@ -384,7 +399,7 @@ class HrParser{
 					trace("Init");
 					state = ParserState.SectionTaskNameSearch;
 				case SectionTaskNameSearch:
-					trace("SectiontaskNameSearch");
+					trace("SectionTaskNameSearch");
 					currentSectiontaskName = FindWord(nonWordChars(), true);
 					if(currentSectiontaskName.length == 0){
 						Sys.println("Unable to find a section taskName!");
@@ -445,7 +460,7 @@ class HrParser{
 						}
 					}
 
-					
+
 					//Otherwise it must be just a value then
 					//A value is constrained to be on a single line
 					currentValue = FindWord(['\r','\n'], false);
@@ -466,7 +481,7 @@ class HrParser{
 							}
 							else{
 								tasks.push(new KeyValues(currentKey, currentValue));
-							}					
+							}
 						}
 						CheckForChar('}', ParserState.SectionTaskNameSearch, ParserState.KeySearch);
 					}
@@ -516,10 +531,10 @@ class HrParser{
 		eatWhitespace();
 		//Can we have comments at the very start?
 		if(commentsAllowed){
-			while (text.charAt(pos) == '#'){ 
+			while (text.charAt(pos) == '#'){
 				eatline(); eatWhitespace();
 			}
-		} 
+		}
 
 		var taskName:StringBuf = new StringBuf();
 		var c:String='';
@@ -532,7 +547,7 @@ class HrParser{
 				taskName.addChar(text.charCodeAt(pos));
 			pos++;
 		}
-		eatWhitespace();		
+		eatWhitespace();
 		return taskName.toString();
 	}
 
