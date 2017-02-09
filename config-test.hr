@@ -1,0 +1,32 @@
+#This is a comment
+variables
+    genGame=build/gen/game.js
+    index = file://%cd%/index.html
+    zipname = Garanja.zip
+
+tasks
+# Task Order should be: F,B,C,D, racer
+    A = [:C,:B,:D,
+    racer
+    ]
+    B = echo |@F|
+    C = |@B|
+    D = [Horsey
+    ]
+    F = dir
+
+    #embedded task ref to G should not be allowed since G has multiple commands
+    G = echo |@H|
+    H = [
+    Command1
+    Comand2
+    ]
+
+    #TODO: Cant use a task that has multiple dependencies as an embedded taskRef!
+
+    #Refer to a task that is not defined
+    #I = |@K|
+
+    #cyclical dependency
+    #Y = [:Z]
+    #Z = [:Y]

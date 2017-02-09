@@ -22,12 +22,11 @@ An example `config.hr` file is shown below:
     #comments look like this and are allowed outside sections, and between tasks and variables
     #There are two specific sections that are allowed in a config.hr file: variables and tasks
     #The variables section is optional and does not need to be defined if it is not needed
-    variables{
+    variables
         #This sets the name of our zip file
         zipName = TestPackage
-    }
 
-    tasks{
+    tasks
         #Delete the zip file package if it exists
         delete-zip= if exist "|@zipName|.zip" (del @zipName|.zip)
         #Get the file version of the main .exe so we can add it to the end of the zipfile name
@@ -37,7 +36,6 @@ An example `config.hr` file is shown below:
         zip = 7za.exe a -tzip |@zipName|_|@file-version|.zip README.txt Version.txt bin\Release\MyUtil.exe
         #Below is a task that runs several other tasks (note the task neames must all be preceeded by ':')
         build-zip = [:delete-zip, :zip]
-    }
 
 
 ```

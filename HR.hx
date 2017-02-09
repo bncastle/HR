@@ -13,44 +13,46 @@ using StringTools;
 //::hix:neko -main HR --no-traces -dce full -neko hr.n
 //::hix:debug -main HR -cpp bin
 
-
 class HR
 {
-	static inline var VERSION = "0.24";
+	static inline var VERSION = "0.5";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
+	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
+	static inline var ERR_NO_TASKS_FOUND = -1027;
+ 	static inline var ERR_ILLEGAL_TASK_REF= -1028;
 
 	var verbose:Bool = false;
-	var parser(default,null):HrParser;
-
-	//This holds any taks we are in the Process
-	//of running. A task is put on here if it depends on another
-	//task. This way we can check for cyclic references and catch them
-	var taskStack:Array<String>;
+	var tokenizer(default,null):HrTokenizer;
+	var parser:HrParser;
+	var tokens:Array<Token>;
+	var taskResults:Map<String,String>;
+	var dependencyMap:Map<String,Array<String>>;
 
 	static function main(): Int
 	{
-		Sys.println('\nHR Version $VERSION: A task runner.');
-		Sys.println("Copyright 2016 Pixelbyte Studios");
+		log('\nHR Version $VERSION: A task runner.');
+		log("Copyright 2017 Pixelbyte Studios");
 
 		//Note this: We want the config file in the directory where we were invoked!
 		var cfgFile:String = Sys.getCwd() + CFG_FILE;
 		var printTasks:Bool = false;
+		var retCode:Int = 0;
 
 		if (Sys.args().length < 1)
 		{
-			Sys.println("===================================");
-			Sys.println("Usage: HR.exe [-v] <task_taskName>");
-			Sys.println("-v prints out each command as it is executed");
-			// Sys.println("-t (prints a list of valid tasks)");
+			log("===================================");
+			log("Usage: HR.exe [-v] <task_taskName>");
+			log("-v prints out each command as it is executed");
+			// log("-t (prints a list of valid tasks)");
 
 			if (!HR.CheckForConfigFile(cfgFile))
 			{
-				Sys.println('Make a $CFG_FILE file and put it in your project directory.');
+				log('Make a $CFG_FILE file and put it in your project directory.');
 				return -1;
 			}
 			else{
-				Sys.println("");
+				log("");
 				printTasks = true;
 			}
 		}
@@ -58,7 +60,7 @@ class HR
 		var h = new HR();
 		var taskIndex = 0;
 
-		//Try  to parse the HR config file
+		//Parse the config file
 		if (!h.ParseConfig(cfgFile))
 		{
 			return -1;
@@ -71,24 +73,57 @@ class HR
 			return -1;
 		}
 
+		//1st, create a dependency map that maps ALL the tasks direct dependencies
+		h.dependencyMap = h.createDependencyMap();
+
+		//Check for any undefined tasks. These are most likely to occur
+		//when there is an embedded task reference
+		retCode = h.checkForUndefinedTasks();
+		if(retCode != 0){
+			return retCode;
+		}
+
+		//Check the config file for cyclical dependencies
+		retCode = h.checkForCyclicalDependencies();
+		if(retCode != 0){
+			error('Cyclical dependencies found in "$CFG_FILE".');
+			return retCode;
+		}
+
+		//Verbose mode?
 		if (Sys.args()[0] == "-v")
 		{
 			h.verbose = true;
 			taskIndex++;
 		}
 
-		var subTask:String = Sys.args()[taskIndex];
-		Sys.println(subTask);
-		var retCode:Int = h.RunTask(subTask);
-		if (retCode == ERR_TASK_NOT_FOUND)
-		{
-			Sys.println('Task: $subTask not found!');
-			return -1;
+		//Get the task to execute
+		var taskName:String = Sys.args()[taskIndex];
+
+		//Does the task exist?
+		if(!h.parser.tasks.exists(taskName)){
+			error('"$taskName"" is not defined');
+			return ERR_TASK_NOT_FOUND;
 		}
-		else if ( retCode != 0)
-		{
-			// Sys.println('Error running task: $subTask');
-			return -1;
+
+		//Determine the order in which the tasks should be executed
+		//such that their dependencies are satisfied
+		var callOrder:Array<String> = [];
+		h.determineTaskOrder(taskName, callOrder);
+		//We must add the main task as well to the end
+		callOrder.push(taskName);
+		// for(c in callOrder) trace('$c');
+
+		//Check for any illegal embedded task references
+		//If a task refers to another in one of its commands and that task has multiple
+		//results, then error out
+		retCode = h.checkForIllegalEmbeddedTaskRefs(callOrder);
+		if(retCode != 0) return retCode;
+
+		for(task in callOrder){
+			retCode = h.RunTask(task);
+			if ( retCode != 0)
+				return retCode;
 		}
 
 		return retCode;
@@ -97,143 +132,237 @@ class HR
 	public function new()
 	{
 		//Create a new parser
-		parser = new HrParser();
-		taskStack = new Array<String>();
+		tokenizer = new HrTokenizer();
+		taskResults= new Map<String,String>();
+		dependencyMap= new Map<String,Array<String>>();
 	}
 
 	function ParseConfig(cfgFile:String): Bool
 	{
-		return parser.Parse(cfgFile);
+		tokens = tokenizer.parseFile(cfgFile);
+		if(tokens != null && !tokenizer.wasError){
+			parser = HrParser.ParseTokens(tokens);
+			
+			//Print out all our tokens
+			// for(t in tokens)
+			// 	Sys.println('${t.type} => ${t.lexeme}');
+
+			return (parser != null && !parser.wasError);
+		}
+		else return false;
 	}
 
-	function RunTask(taskName: String):Int
+	static function error(msg:Dynamic){
+		Sys.println('Error: $msg');
+	}
+
+	static function log(msg:Dynamic){
+		Sys.println(msg);
+	}
+
+	//Gets the direct dependencies for the given task
+	function getDirectDependencies(taskName:String):Array<String>
 	{
-		var index = KeyValues.KeyIndex(taskName, parser.tasks);
-		if(index < 0){
-			Sys.println('No command found for task: $taskName');
-			return ERR_TASK_NOT_FOUND;
+		var stack:Array<String> = [];
+
+		if(taskName == null) return null;
+
+		var tasks = parser.tasks.get(taskName);
+		if(tasks == null){
+			error('unable to find commands for "$taskName"');
+			return null;
 		}
 
-		var task = parser.tasks[index];
-		var retCode:Int = 0;
+		//for each task in tasks look for direct dependencies
+		for(i in 0 ... tasks.length){
+			if(tasks[i].isTaskRef){
+				stack.push(tasks[i].text);
+			}
+			else{ //it must be a command so get those deps
+				var cmdDeps = parser.GetEmbeddedTaskReferences(tasks[i]);
 
-		for(i in 0...task.values.length){
-
-			//See if the command is itself a task. If it is, run it
-			if(task.values[i].charAt(0) == ":")
-			{
-				var subTask = task.values[i].substr(1);
-				retCode = RunTask(subTask);
-				if (retCode == ERR_TASK_NOT_FOUND)
-				{
-					Sys.println('Unable to run task: $subTask from task: $taskName. The $subTask task does not exist!');
-					taskStack.remove(taskName);
-					return -1;
-				}
-				else if(retCode != 0){
-					Sys.println('Error in sub-task: $subTask from task: $taskName. $subTask returned $retCode');
-					taskStack.remove(taskName);
-					return retCode;
+				//now we need to go through these and get their deps
+				if(cmdDeps != null){
+					for(j in 0 ... cmdDeps.length){ //if this dep is not already on the stack, push it
+						if(stack.indexOf(cmdDeps[j]) == -1){
+							stack.push(cmdDeps[j]);
+						}
+					}
 				}
 			}
-			else
-			{
-				//First, get dependencies for this task
-				//trace('Get Dependencies from ${parser.tasks.length} tasks');
-				var dependencies = task.GetDependencies(parser.tasks);
+		}
+				
+		return stack;
+	}
 
-				if(dependencies.length > 0){
-					trace('$taskName numdeps: ${dependencies.length}');
-					//We need to run these first, but we must also
-					//push the current task onto the taskStack
-					if(taskStack.indexOf(taskName) > -1){
-						//Find the cyclical dependency
-						for(i in 0... dependencies.length){
-							var cycindex = taskStack.indexOf(dependencies[i]);
-							if(cycindex > -1){
-								Sys.println('Error: Cyclical dependency $taskName <=> ${dependencies[i]}');
-								return -1;
+	function createDependencyMap():Map<String, Array<String>>{
+		var map:Map<String, Array<String>> = new Map<String,Array<String>>();
+
+		//Create a dependency map for each task we can then use
+		//to check for cyclical deps, etc
+		for(task in parser.tasks.keys()){
+			var deps = getDirectDependencies(task);
+			if(deps != null)
+				map.set(task, deps);
+		}
+		return map;
+	}
+
+	//returns a non-zero code if ANY cyclical deps are found
+	//this may not be the quickest way but it is easiest to just check
+	//all tasks for cyclical dependencies
+	function checkForCyclicalDependencies():Int{
+		var retCode = 0;
+		//Holds the tasks that we've already checked
+		var checked:Array<String> = [];
+		//Go through all dependencies of a task and see if there are any cyclical referrals
+		for(taskName in dependencyMap.keys()){
+			for (node in dependencyMap[taskName]){
+				if(taskName == node || checked.indexOf(node) > -1) continue;
+				else if(dependencyMap[node].indexOf(taskName) > -1){
+					error('Cyclical dependency: $taskName <=> ${node}');
+					retCode = ERR_CYCLIC_DEPENDENCE;
+				}
+			}
+			checked.push(taskName); //We've checked this task with all others
+		}
+		return retCode;
+	}
+
+	//Checks all tasks to see if there is an embedded taskRef that is not defined
+	function checkForUndefinedTasks():Int{
+		var retCode = 0;
+		for(taskName in dependencyMap.keys()){
+			// trace('$taskName => ${dependencyMap[taskName]}');
+			for(subTask in dependencyMap[taskName]){
+				if(dependencyMap[subTask] == null){
+					error('Task $subTask was not found in task $taskName');
+					retCode = ERR_TASK_NOT_FOUND;
+					continue;
+				}
+			}
+		}
+		return retCode;
+	}
+
+	//Given a task callstack, this checks each task to see if 
+	//it has any embedded tasks in a command AND that task has multiple results
+	//which is illegal
+	function checkForIllegalEmbeddedTaskRefs(callStack:Array<String>):Int{
+		var retCode = 0;
+		for(taskName in callStack){
+			//  trace('Task: $taskName');
+			//Get the ACTUAL tasks here
+			var tasks = parser.tasks.get(taskName);
+			for(cmd in tasks){
+				//  trace('Command: $cmd');
+				//Check for embedded refs in this task
+				if(!cmd.isTaskRef){
+					var cmdRefs = parser.GetEmbeddedTaskReferences(cmd);
+					if(cmdRefs != null){
+						for(ref in cmdRefs){ //Now check the referred task for multiple results
+							//  trace('$ref');
+							if(parser.tasks.get(ref).length > 1){
+								error('Task "$ref" has multiple results so cannot be used as an embedded task reference in task "$taskName"');
+								retCode = ERR_ILLEGAL_TASK_REF;
 							}
 						}
-
-						Sys.println('Task dependency error: $taskName');
-						return -1;
-					}
-					else
-						taskStack.push(taskName);
-
-					trace('$taskName depends on:');
-
-					for(i in 0... dependencies.length){
-						trace('${dependencies[i]}');
-
-						//Run the dependency
-						retCode = RunTask(dependencies[i]);
-						if(retCode != 0){
-							Sys.println('Error running dependency: ${dependencies[i]} in $taskName');
-							taskStack.remove(taskName);
-							return retCode;
-						}
 					}
 				}
-
-				//See if the command has any references to other task outputs
-				//if so, add the task output in
-				parser.UpdateCommandWithResults(taskName);
-
-				//If we are in verbose mode, print the command too
-				if(verbose)
-					Sys.println(task.values[i]);
-
-				// var args = t.value.split(' ');
-				// var cmd = args.shift();
-				var proc = new Process(task.values[i]);
-				var output:String = proc.stdout.readAll().toString();
-				var err:String = proc.stderr.readAll().toString();
-				var retcode:Int = proc.exitCode();
-
-				proc.close();
-
-				if(output.length > 0)
-					Sys.print(output);
-				if(err.length > 0)
-					Sys.print(err);
-
-				//May want to remove this later?
-				//if(output.length < 512)
-				//Trim the end of the output to remove any newline characters as that would
-				//totally screw up using the output of this task in another!
-				parser.AddResult(task.key, output.rtrim());
-
-
-				taskStack.remove(taskName);
-
-				if (retcode != 0) return retcode;
 			}
+		}
+		return retCode;
+	}
+
+	//Determines the order in which a set of tasks should be executed and spits
+	//it out in the form of an array of tasks
+	function determineTaskOrder(taskName:String, callOrder:Array<String>, insertionIndex:Int = 0, level:Int = 0){
+		var dependencies = dependencyMap[taskName];
+		if(level > 0 && level < 2)
+			callOrder.push(taskName);
+		else if(level > 0)
+			callOrder.insert(insertionIndex, taskName);
+
+		for(dep in dependencies){
+			if(callOrder.indexOf(dep) == -1) { //Have we checked this dependency yet?
+				if(insertionIndex - 1 < 0)
+					determineTaskOrder(dep, callOrder, 0, level + 1);
+				else
+					determineTaskOrder(dep, callOrder, insertionIndex - 1, level + 1);
+			}
+		}
+	}
+
+	function RunTask(taskName: String, ?showOutput:Bool = true):Int
+	{
+		var tasks = parser.tasks.get(taskName);
+
+		//Now run each taskRef or command in sequence
+		for(i in 0...tasks.length){		
+			//See if this task is just a task reference. If it is, skip it
+			//these should already have been taken care of with the new dependency ordering
+			if(tasks[i].isTaskRef)
+				continue;
+
+			//See if the command has any references to other task outputs
+			//if so, add the task output in
+			// trace('$taskName: Expand variables');
+			parser.ExpandVariables(taskName);
+			// trace('$taskName: Expand taskOutput variables');
+			parser.ExpandVariables(taskName, taskResults);
+
+			//Run the command and if it fails, bail
+			var retCode = RunCommand(taskName, tasks[i].text, showOutput);
+			// trace('retCode: $retCode');
+			if (retCode != 0) return retCode;
 		}
 		return 0;
 	}
 
-	function PrintAvailableTasks()
-	{
-		Sys.println("Available Tasks:");
-		for	(t in parser.tasks)
-		{
-			Sys.println(t.key);
+	function Contains(val:String, arr:Array<Result>):Bool{
+		for(res in arr){
+			if(res.text == val) return true;
+		}
+		return false;
+	}
+
+	function RunCommand(taskName:String, cmd:String, showOutput:Bool):Int{
+		//If we are in verbose mode, print the command too
+		if(verbose)
+			log(cmd);
+
+		var proc = new Process(cmd);
+		var output:String = proc.stdout.readAll().toString();
+		var err:String = proc.stderr.readAll().toString();
+		var retcode:Int = proc.exitCode();
+
+		proc.close();
+
+		if(output.length > 0){
+			output = output.rtrim();
+
+			if(taskName != null){
+				// trace('Set results for $taskName => |$output|');
+				taskResults.set(taskName, output);
+			}
+
+			if(showOutput)
+				Sys.print(output);
+		}
+		 if(err.length > 0)
+			Sys.print(err);
+
+		return retcode;
+	}
+
+	function PrintAvailableTasks(){
+		log("Available Tasks:");
+		for	(taskName in parser.tasks.keys()){
+			log(taskName);
 		}
 	}
 
-	//function IsTask(taskName:String)
-	//{
-	//	for (t in tasks)
-	//	{
-	//		if (taskName.toLowerCase() == t.taskName.toLowerCase()) return true;
-	//	}
-	//	return false;
-	//}
-
-	static function CheckForConfigFile(cfgFile:String): Bool
-	{
+	static function CheckForConfigFile(cfgFile:String): Bool{
 		//Check for a valid config file
 		if (!FileSystem.exists(cfgFile))
 		{
@@ -244,357 +373,437 @@ class HR
 	}
 }
 
-enum ParserState{
-	Init;
-	SectionTaskNameSearch;
-	KeySearch;
-	ValueSearch;
-	FinishSuccess;
-	FinishFail;
+enum HrToken{
+	//Single-character tokens
+    leftBracket; rightBracket; equals; comma;
+	//Keywords
+	variableSection; taskSection;
+	//DataTypes
+	identifier; value;
+	//other
+	none; eof;
 }
 
-class KeyValues{
-	public var key(default, null):String;
-	public var values(default, null):Array<String>;
+class Token{
+	public var type(default,null):HrToken;
+	public var lexeme(default,null):String;
+	public var line(default,null):Int;
+	public var column(default,null):Int;
 
+	public function new(t:HrToken, line:Int, col:Int, ?lex:String = null){
+		type = t;
+		this.line = line;
+		column = col;
+		lexeme = lex;
+	}
+
+	public function toString(){
+		return '${type} |${line}:${column}| |${lexeme}|';
+	}
+}
+
+class Result {
+	public var text:String;
+	public var isTaskRef(default,null):Bool;
+	public function new(cmd:String, isTaskName:Bool){text = cmd; isTaskRef = isTaskName;}
+	public function toString():String{return '${isTaskRef ? "TASK":"Cmd"}:${text}';	}
+}
+
+class HrParser {
 	//This is what a variable looks like in the value field
-	static var repl:EReg = ~/(\|@[A-Za-z0-9_-]+\|)/gi;
+	static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
 
-	public function new(taskName:String, val:String, vals:Array<String> = null){
-		key = taskName;
+	//Maps the variable sot their values
+	var variables:Map<String,String>;
 
-		if(vals == null){
-			values = new Array<String>();
-			values.push(val);
-		}
-		else{
-			values = vals;
-		}
+	//Maps the task name to its command
+	public var tasks(default,null):Map<String,Array<Result>>;
+
+	//Contains any tasks that are as of yet undefined
+	var undefinedTasks:Array<String>;
+
+	public var wasError(default,null):Bool;
+
+	private function new(){
+		variables = new Map<String,String>();
+		tasks = new Map<String,Array<Result>>();
+		undefinedTasks = new Array<String>();
+		wasError = false;
 	}
 
-	public function ExpandVariables(replacements:Array<KeyValues>){
-		if(replacements == null || replacements.length == 0) return;
-		// trace(key + "=" + value);
-
-		for(i in 0...values.length){
-			//Try to replace any that exist in our variables map and are in the command
-			values[i] = repl.map(values[i], function (reg:EReg) {
-				//Remove the surrounding '|' and the '@'
-				var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
-
-				for(i in 0...replacements.length){
-					if(variableName == replacements[i].key)
-					{
-						//Sys.println("-->" + replacements[i].value);
-						return replacements[i].values[0];
-					}
-				}
-				return reg.matched(1);
-			});
-			// Sys.println("::" + value);
-		}
+	public static function ParseTokens(tokens:Array<Token>):HrParser{
+		var parser = new HrParser();
+		if(parser.Parse(tokens)) return parser;
+		else return null;
 	}
 
-	//Returns an array of task taskNames on which this command is dependent
-	//
-	public function GetDependencies(tasks:Array<KeyValues>): Array<String>{
-		var dependents = new Array<String>();
-		if(tasks == null || tasks.length == 0) return dependents;
+	//Use this function to log errors in this class
+	//this allows us to redirect our errors easily
+	function logError(err:Dynamic, ?t:Token = null){
+		if(t == null)
+			Sys.println('Error ${err}');
+		else
+			Sys.println('Error [${t.line}:${t.column}] ${err}');
+		wasError = true;
+	}	
 
-		for(i in 0...values.length){
-			//check and see if any task taskName appears in the command
-			//if it does, add it to the List
-			trace('value: ${values[i]}');
-			repl.map(values[i], function(reg:EReg){
-				//Remove the surrounding '|' and the '@'
-				var variableName = reg.matched(1).substring(2,reg.matched(1).length - 1);
+	private function Parse(tokens:Array<Token>):Bool{
+		//tells which section we're in 0 = variables, 1 = commands
+		var section:Int = -1;
+		var id:String = "";
+		var inArray:Int = 0;
 
-				//Is the variable we just found in the tasks list?
-				var index = KeyValues.KeyIndex(variableName, tasks);
-				if(index > - 1 && dependents.indexOf(variableName) == -1){
-					//Make sure the matching task is not the same task as this one!
-					if(tasks[index].key != key){
-						dependents.push(variableName);
-					}
-				}
-				return reg.matched(1);
-			});
-		}
-
-		return dependents;
-	}
-
-	public static function KeyIndex(key:String, array:Array<KeyValues>): Int{
-		if(array == null) return -1;
-		for(i in 0...array.length){
-			if(array[i].key == key) return i;
-		}
-		return -1;
-	}
-}
-
-// class KeyValuess{
-// 	public var key(default, null):String;
-// 	public var values:Array<String>;
-// 	public function new(taskName:String){
-// 		key = taskName;
-// 		values = new Array<String>();
-// 	}
-
-// 	public function AddValue(value:String){
-// 		values.push(value);
-// 	}
-// }
-
-class HrParser{
-
-	static inline var VARIABLES_SECTION = "variables";
-	static inline var TASKS_SECTION = "tasks";
-
-	//ParserState
-	var pos: Int;
-	// var column: Int;
-	// var line: Int;
-	var text:String;
-	var state: ParserState;
-	var currentSectiontaskName:String;
-	var currentKey:String;
-	var currentValue:String;
-
-	//Parser results
-	//Holds any variables declared
-	var variables:Array<KeyValues>;
-	//Holds the tasks and their respective commands
-	public var tasks:Array<KeyValues>;
-	//Holds the taks outputs
-	var taskOutputs:Array<KeyValues>;
-
-	static inline function  nonWordChars() { return [' ', '=', '\r','\n', '{', '}', '[', ']']; }
-
-	public function new() {
-	}
-
-	function initialize(){
-		variables = new Array<KeyValues>();
-		tasks = new Array<KeyValues>();
-		taskOutputs = new Array<KeyValues>();
-
-		state = ParserState.Init;
-		pos = 0;
-		currentSectiontaskName = '';
-		currentKey = '';
-		currentValue = '';
-		// column = 0;
-		// line = 0;
-	}
-
-	public function Parse(cfgFile:String): Bool{
-		if(!FileSystem.exists(cfgFile)) return false;
-		initialize();
-		text = File.getContent(cfgFile);
-		if(text.length == 0) return false;
-		while(pos < text.length){
-			switch(state){
-				case Init:
-					trace("Init");
-					state = ParserState.SectionTaskNameSearch;
-				case SectionTaskNameSearch:
-					trace("SectionTaskNameSearch");
-					currentSectiontaskName = FindWord(nonWordChars(), true);
-					if(currentSectiontaskName.length == 0){
-						Sys.println("Unable to find a section taskName!");
-						state = ParserState.FinishFail;
-					}
-					else{
-						trace('Found section: $currentSectiontaskName');
-						CheckForChar('{', ParserState.KeySearch, ParserState.FinishFail);
-					}
-				case KeySearch:
-					currentKey = FindWord(nonWordChars(), true);
-					if(currentKey.length == 0){
-						trace("Didn't find any more keys in this section.");
-						CheckForChar('}', ParserState.SectionTaskNameSearch, ParserState.FinishFail);
-					}
-					else{
-						if(!isNextChar('=')){ //Check for equals
-							Sys.println("Error: Expected '='!");
-							state = ParserState.FinishFail;
+		for(tk in tokens){
+			switch(tk.type){
+				case HrToken.variableSection:
+					section = 0;
+				case HrToken.taskSection:
+					section = 1;
+				case HrToken.identifier:
+						if(inArray == 0){
+							id = tk.lexeme;
 						}
-						else{
-							trace('Found key: $currentKey');
-							eatWhitespace();
-							state = ParserState.ValueSearch;
+						else {//We're in an array and this is a taskName. Store it for checking
+							//An identifier in an array must be a taskName
+							tasks[id].push(new Result(tk.lexeme, true));
+							undefinedTasks.push(tk.lexeme);
 						}
-					}
-				case ValueSearch:
-					trace("ValueSearch");
-					//Is it an array??
-					if(isNextChar('[')){
-						var cmds = new Array<String>();
-						while (!isNextChar(']') && pos < text.length){
-							eat([',',' ','\n','\r']);
-							if(isNextChar(':')){
-								var taskLabel = FindWord([' ', ',', '\r', '\n', ']'], false);
-								if(taskLabel.length == 0){
-									Sys.println("Error: Unable to find a valid task label");
-									state = ParserState.FinishFail;
-									break;
+				case HrToken.value:
+						if(inArray == 0){
+							if(section == 0){ //It is a variable
+								if(variables.exists(id)){
+									logError('The variable ${id} already exists!');
 								}
-								else{
-									cmds.push(':$taskLabel');
+								else 
+									variables.set(id, tk.lexeme);
+							}
+							else if(section == 1) { //must be a task
+								if(tasks.exists(id)){
+									logError('The task ${id} already exists!');
 								}
-							}
-							else
-							{
-								Sys.println("Error: Expected a ':'. Arrays can only contain tasks, and task names must be preceeded by a ':'");
-								state = ParserState.FinishFail;
-								break;
-							}
-						}
-						if(state == ParserState.FinishFail) continue;
-						else{
-							//We successfully parsed an array of commands
-							tasks.push(new KeyValues(currentKey, null, cmds));
-							state = ParserState.KeySearch;
-							continue;
-						}
-					}
-
-
-					//Otherwise it must be just a value then
-					//A value is constrained to be on a single line
-					currentValue = FindWord(['\r','\n'], false);
-					if(currentValue.length == 0){
-						Sys.println("Error:Unable to find a value for $currentKey!");
-						state = ParserState.FinishFail;
-					}
-					else{
-						trace('Found value: $currentValue');
-						if(currentSectiontaskName == VARIABLES_SECTION){
-							variables.push(new KeyValues(currentKey, currentValue));
-						}
-						else if(currentSectiontaskName == TASKS_SECTION){
-							if(KeyValues.KeyIndex(currentKey, tasks) > -1){
-								Sys.println('Error: task \'$currentKey\' already exists!');
-								state = ParserState.FinishFail;
-								continue;
+								else 
+									tasks.set(id, [new Result(tk.lexeme, false)]);
 							}
 							else{
-								tasks.push(new KeyValues(currentKey, currentValue));
+								logError("Invalid section #");
 							}
 						}
-						CheckForChar('}', ParserState.SectionTaskNameSearch, ParserState.KeySearch);
+						else{
+							//Values in an array are commands of that id
+							tasks[id].push(new Result(tk.lexeme, false));
+						}
+				case HrToken.leftBracket:
+					//If we enter an array, make sure the task doesn't yet exist
+					if(tasks.exists(id)){
+						logError('The task ${id} already exists!', tk);
 					}
-				case FinishSuccess:
-					trace("FinishSuccess");
-					return true;
-				case FinishFail:
-					trace("FinishFail");
-					return false;
+					else{ //create an empty array and set its id
+						tasks.set(id,[]);
+					}
+				inArray++;
+				case HrToken.rightBracket: inArray--;
+				default:
 			}
 		}
 
-		 if(state == ParserState.FinishFail){
-			 return false;
-		 }
-
-		//Replace any variables with their contents
-		for(i in 0...tasks.length){
-			tasks[i].ExpandVariables(variables);
+		//Now that we've parsed the tree, check and see if all our tasks are defined
+		var status:Bool = true;
+		for(undef in undefinedTasks){
+			if(!tasks.exists(undef)){
+				logError('Unable to find a command for task :${undef}');
+				status = false;
+			}
 		}
+
+		return status;
+	}
+
+	 public function ExpandVariables(taskName:String, ?replacements:Map<String,String> = null){
+	 	if(taskName == null) return;
+		var taskSequence = tasks.get(taskName);
+		if(taskSequence == null) return;
+		if(replacements == null) replacements = variables;
+		for(i in 0 ... taskSequence.length){
+			if(taskSequence[i].isTaskRef) continue; //taskReferences dont get expanded
+			Expand(taskSequence[i], replacements);
+		}
+
+	}
+
+	//Gets any task references embedded in this command
+	public function GetEmbeddedTaskReferences(cmd:Result):Array<String>{
+		if(cmd == null || cmd.isTaskRef) return null;
+		else{
+			var deps:Array<String> = [];
+			repl.map(cmd.text, function(reg:EReg){
+				var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
+				for(key in variables.keys()){
+					if(variableName == key){ return "";}
+					else{
+						if(deps.indexOf(variableName) == -1)
+							deps.push(variableName);
+					}
+				}
+				return "";
+			});
+			if(deps.length > 0) return deps;
+			else return null;
+		}
+	}
+
+	function Expand(res:Result, replacements:Map<String,String>){
+		if(res == null || res.isTaskRef || replacements == null) return;
+
+		res.text = repl.map(res.text, function(reg:EReg){
+			//Remove the surrounding '|' and the '@'
+			var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
+			// trace('Expand found:${variableName} from |$res|');
+			for(key in replacements.keys()){
+				if(variableName == key){
+					// trace('replacement: |${replacements[key]}|');
+					return replacements[key];
+				}
+			}
+			// trace('Expand was unable to find replacement for:${variableName}');
+			return reg.matched(1);
+		});
+	}
+
+	public function toString():String{
+		var sb = new StringBuf();
+		sb.add("----VARIABLES----\n");
+		for(v in variables.keys()){
+			sb.add('[${v}] => ${variables[v]}\n');
+		}
+		sb.add("----TASKS----\n");
+		for(v in tasks.keys()){
+			sb.add('[${v}] => \n');
+			for(t in ${tasks[v]}){
+				sb.add('${t.toString()}\n');
+			}
+		}
+		return sb.toString();
+	}
+}
+
+class HrTokenizer{
+	static var WHITESPACE:Array<Int> = ["\t".code, " ".code, "\r".code];
+	static var LINE_BREAKS:Array<Int> = ["\n".code, "\r".code];
+	static var KEYWORDS:Map<String,HrToken> = ["variables" => HrToken.variableSection, "tasks" => HrToken.taskSection];
+
+	var content:String;
+	var tokens:Array<Token>;
+	var index:Int;
+	var start:Int;
+	//The current line of text we're processing
+	var line:Int;
+	//The column where the parser is currently
+	var col:Int;
+	//If > 0 then the tokenizer thinks its inside an array
+	var arrayLevel:Int;
+
+	//If this is true, then there were errors processing the file or text input
+	public var wasError(default, null):Bool;
+	//Gets the previous token type if there was one
+	var prevTokenType(get,null):HrToken;
+	function get_prevTokenType():HrToken { if(tokens.length == 0) return HrToken.none; else return tokens[tokens.length - 1].type;}
+
+	//Gets the current lexeme length
+	var lexemeLength(get,null):Int;
+	function get_lexemeLength():Int { return (index - start) > 0 ? (index - start) : 0;}
+
+	//Gets the current lexeme
+	var lexeme(get,null):String;
+	function get_lexeme():String {
+		if(start > index || start == index) return "";
+		else return content.substring(start, index);
+	}
+
+	public function new(){
+		tokens = new Array<Token>();
+	}
+
+	function Reset(){
+		tokens = new Array<Token>();
+		content = null;
+		index = 0;
+		start = 0;
+		line = 1;
+		col = 1;
+		arrayLevel = 0;
+		wasError= false;
+	}
+
+	public function parseFile(filename:String): Array<Token>{
+		Reset();
+		//Try to get the file contents
+		if(!getFileContents(filename)){
+			return null;
+		}
+		//Now grab the tokens from the file
+		getTokens();
+
+		return tokens;
+	}
+
+	function getFileContents(filename:String):Bool {
+		if(!FileSystem.exists(filename)){
+			Sys.println('File ${filename} not found!');
+			return false;
+		}
+
+		try{
+			content = File.getContent(filename);
+		}
+		catch(ex:Dynamic){
+			Sys.println("Error: ${ex}");
+		}
+
 		return true;
 	}
 
-	function IsEof(){ return pos >= text.length;}
+	//Use this function to log errors in this class
+	//this allows us to redirect our errors easily
+	function logError(err:Dynamic, ?tk:Token = null){
+		if(tk != null)
+			Sys.println('Error [${tk.line}:${tk.column}] ${err}');
+		else
+			Sys.println('Error [${line}:${col - lexemeLength}] ${err}');
+		wasError = true;
+	}
 
-	function CheckForChar(ch:String, trueState:ParserState, falseState:ParserState):Bool{
-		if(!isNextChar(ch)){
-			//If we didn't find it before the end of the file, then Error!
-			if(IsEof()){
-				Sys.println('Error: missing \'$ch\'');
-				state = ParserState.FinishFail;
+	function addToken(t:HrToken){
+		//  trace('Add ${t} |${lexeme}|');
+		tokens.push(new Token(t, line, col - lexemeLength, lexeme));
+	}
+
+	function getTokens(){
+		while(!isEof()){
+			eat(WHITESPACE);
+			start = index;
+			var c:Int = nextChar();
+			switch(c){
+				case '#'.code : matchUntil(LINE_BREAKS); //it's a comment
+				case '['.code : arrayLevel++; addToken(HrToken.leftBracket);
+				case ']'.code : 
+					arrayLevel--; 
+					if(arrayLevel < 0){ //Unmatched ']'?
+						logError('unmatched ]');
+					}
+					else if(prevTokenType == HrToken.comma){
+							logError('invalid comma');
+						}
+					addToken(HrToken.rightBracket);
+				case '='.code :
+					if(prevTokenType == HrToken.variableSection || prevTokenType == HrToken.taskSection)
+						logError("section headings not allowed on hte left side of an ="); 
+					else if(prevTokenType != HrToken.identifier)
+						logError("Identifier expected before ="); 
+					addToken(HrToken.equals);
+				// case ':'.code : addToken(HrToken.colon);
+				case ','.code : addToken(HrToken.comma);
+				case '\n'.code : start = index; line++; col = 1; if(prevTokenType == HrToken.equals) logError("value required after equals", tokens[tokens.length -1]);
+				default:
+					//We expect a value after an '='
+					if(prevTokenType == HrToken.equals){
+						matchUntil(LINE_BREAKS);
+						if(lexemeLength > 0)
+							addToken(HrToken.value);
+						else
+							logError('Expected a value after =');
+					}
+					else if(arrayLevel > 0){ //Are we in an array?							
+							if(c == ':'.code){ //Is this a task reference?
+								start = index;
+								matchIdentifier();
+								if(lexemeLength > 0){
+									var t = KEYWORDS.get(lexeme);
+									if(t != null){
+										logError("keywords are not allowed here");
+									}
+									else{
+										addToken(HrToken.identifier);
+									}
+								}
+								else{
+									logError('Expected a taskName identifier after :');
+								}
+							}
+							else{ //otherwise, it must a full command
+								matchUntil(LINE_BREAKS);
+								if(lexemeLength > 0)
+									addToken(HrToken.value);
+								else
+									logError('Expected a full command');
+							}
+					}
+					else if (isAlpha(c)){
+						matchIdentifier();
+						if(lexemeLength > 0){
+							//is it a keyword?
+							var t = KEYWORDS.get(lexeme);
+							if(t != null){
+								addToken(t);
+							}
+							else{ //It must be an identifier
+								//Was there another identifier before this one? That isn't allowed
+								if(prevTokenType == HrToken.identifier){
+									logError("Expected an =, not another identifier");
+								}
+								else
+									addToken(HrToken.identifier);
+							}
+						}
+					}
+					else{
+						logError('Unrecognized token: ${lexeme}');
+					}	
 			}
-			else{
-				//trace('Did not find $ch');
-				state = falseState;
-			}
-			return false;
-		}
-		else{
-			trace('Found $ch');
-			state = trueState;
-			return true;
 		}
 	}
 
-	function FindWord(excluded:Array<String>, commentsAllowed:Bool):String{
-		eatWhitespace();
-		//Can we have comments at the very start?
-		if(commentsAllowed){
-			while (text.charAt(pos) == '#'){
-				eatline(); eatWhitespace();
-			}
-		}
-
-		var taskName:StringBuf = new StringBuf();
-		var c:String='';
-		while(pos < text.length){
-			c = text.charAt(pos);
-			if(excluded.indexOf(c) > -1){
-				break;
-			 }
-			else
-				taskName.addChar(text.charCodeAt(pos));
-			pos++;
-		}
-		eatWhitespace();
-		return taskName.toString();
-	}
-
-	function eatWhitespace(){
-		eat([' ', '\n' ,'\r']);
-	}
-
-	function eat(yummyChars:Array<String>){
-		while(pos < text.length){
-			if(yummyChars.indexOf(text.charAt(pos)) > -1 ) pos++;
-			else break;
+	function eat(chars:Array<Int>){
+		while(!isEof() && chars.indexOf(peek()) > -1){
+			nextChar();
+			start = index;
 		}
 	}
 
-	function isNextChar(c:String): Bool{
-		eatWhitespace();
-		if(pos < text.length && text.charAt(pos) == c){
-			pos++;
-			return true;
-		}
-		return false;
+	function match(char:Int):Bool{
+		if(!isEof() && peek() == char) { nextChar(); return true; }
+		else return false;
+	}
+	function matchWhile(chars:Array<Int>){
+		while(!isEof() && chars.indexOf(peek()) > -1) nextChar();
 	}
 
-	function eatline(){
-		var c:String ='';
-		while(pos < text.length){
-			c = text.charAt(pos++);
-			 if(c == '\n' || c == '\r') {
-				 eatWhitespace();
-				 break;
-			 }
-		}
+	function matchUntil(chars:Array<Int>){
+		while(!isEof() && chars.indexOf(peek()) == -1 ) nextChar();
 	}
 
-	///
-	//Updates a task's command with any other task results
-	//that they refer to
-	public function UpdateCommandWithResults(tasktaskName:String){
-		var index = KeyValues.KeyIndex(tasktaskName, tasks);
-		if(index == -1 ) return;
-		tasks[index].ExpandVariables(taskOutputs);
+	function matchIdentifier(){
+		while(isAlpha(peek())) nextChar();
 	}
 
-	public function AddResult(subTask:String, result:String){
-		var index = KeyValues.KeyIndex(subTask, taskOutputs);
-		if(index == -1){
-			taskOutputs.push(new KeyValues(subTask, result));
-		}
+	function isEof():Bool{
+		return index >= content.length;
+	}
+
+	function isAlpha(ch:Int):Bool{
+		return (ch >= 'a'.code && ch <= 'z'.code) || (ch >= 'A'.code && ch <= 'Z'.code) || ch == '_'.code;
+	}
+
+	function nextChar(): Int {
+		index++;
+		col++;
+		return content.fastCodeAt(index - 1);
+	}
+
+	//peeks at the next character in the stream
+	//Note: a lookahead of 0 will return the NEXT character
+	//      a lookahead of 1 will return the char after that
+	function peek():Int {
+		if(isEof()) return 0;
+		return content.fastCodeAt(index);
 	}
 }
