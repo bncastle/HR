@@ -236,7 +236,7 @@ class HR
 			// trace('$taskName => ${dependencyMap[taskName]}');
 			for(subTask in dependencyMap[taskName]){
 				if(dependencyMap[subTask] == null){
-					error('Task $subTask was not found in task $taskName');
+					error('Missing "$subTask" definition from task "$taskName". Either it is a variable or a task?');
 					retCode = ERR_TASK_NOT_FOUND;
 					continue;
 				}
@@ -413,7 +413,7 @@ class HrParser {
 	//This is what a variable looks like in the value field
 	static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
 
-	//Maps the variable sot their values
+	//Maps the variables to their values
 	var variables:Map<String,String>;
 
 	//Maps the task name to its command
@@ -435,6 +435,17 @@ class HrParser {
 		var parser = new HrParser();
 		if(parser.Parse(tokens)) return parser;
 		else return null;
+	}
+
+	public function isAVariable(text:String):Bool{
+		if(text == null || text == "") return false;
+
+		//is it in embedded format?
+		if(repl.match(text)){
+			text = repl.matched(1) .substring(2, repl.matched(1).length - 1);
+		}
+
+		return variables.exists(text);
 	}
 
 	//Use this function to log errors in this class
@@ -540,7 +551,8 @@ class HrParser {
 				for(key in variables.keys()){
 					if(variableName == key){ return "";}
 					else{
-						if(deps.indexOf(variableName) == -1)
+						//Make sure this taskref is not already in the list of deps AND it isnt a variable
+						if(deps.indexOf(variableName) == -1 && !variables.exists(variableName))
 							deps.push(variableName);
 					}
 				}

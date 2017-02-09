@@ -1,13 +1,11 @@
 #This is a comment
-variables{
+variables
     UPX = c:\utils\upx.exe -9
     DestDir = C:\utils
-}
 
-tasks {
+tasks 
     build = haxe build.hxml
     pack = |@UPX| .\bin\Hr.exe
     deploy = copy /Y bin\Hr.exe |@DestDir|
     buildDeploy = [:build, :deploy]
     bpd = [:build, :pack, :deploy]
-}
