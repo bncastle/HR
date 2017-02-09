@@ -314,9 +314,9 @@ class HR
 			log('\nRun: $cmd');
 
 		var proc = new Process(cmd);
+		var retcode:Int = proc.exitCode();
 		var output:String = proc.stdout.readAll().toString();
 		var err:String = proc.stderr.readAll().toString();
-		var retcode:Int = proc.exitCode();
 		proc.close();
 
 		if(output.length > 0){

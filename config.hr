@@ -2,7 +2,6 @@
 variables
     UPX = c:\utils\upx.exe -9
     DestDir = C:\utils
-
 tasks 
     build = haxe build.hxml
     pack = |@UPX| .\bin\Hr.exe
