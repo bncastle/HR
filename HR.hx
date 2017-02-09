@@ -310,8 +310,8 @@ class HR
 
 	function RunCommand(taskName:String, cmd:String, showOutput:Bool):Int{
 		//If we are in verbose mode, print the command too
-		if(verbose)
-			log(cmd);
+		if(verbose){}
+			log('\n $cmd');
 
 		var proc = new Process(cmd);
 		var output:String = proc.stdout.readAll().toString();
@@ -320,13 +320,10 @@ class HR
 		proc.close();
 
 		if(output.length > 0){
-			output = output.rtrim();
-
 			if(taskName != null){
 				// trace('Set results for $taskName => |$output|');
-				taskResults.set(taskName, output);
+				taskResults.set(taskName, output.rtrim());
 			}
-
 			if(showOutput)
 				Sys.print(output);
 		}
