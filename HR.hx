@@ -311,7 +311,7 @@ class HR
 	function RunCommand(taskName:String, cmd:String, showOutput:Bool):Int{
 		//If we are in verbose mode, print the command too
 		if(verbose){}
-			log('\n $cmd');
+			log('\nRun: $cmd');
 
 		var proc = new Process(cmd);
 		var output:String = proc.stdout.readAll().toString();
