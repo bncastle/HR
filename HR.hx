@@ -106,25 +106,15 @@ class HR
 			return ERR_TASK_NOT_FOUND;
 		}
 
-		//Determine the order in which the tasks should be executed
-		//such that their dependencies are satisfied
-		var callOrder:Array<String> = [];
-		h.determineTaskOrder(taskName, callOrder);
-		//We must add the main task as well to the end
-		callOrder.push(taskName);
-		// for(c in callOrder) trace('$c');
-
 		//Check for any illegal embedded task references
 		//If a task refers to another in one of its commands and that task has multiple
 		//results, then error out
-		retCode = h.checkForIllegalEmbeddedTaskRefs(callOrder);
+		retCode = h.checkForIllegalEmbeddedTaskRefs(h.dependencyMap[taskName]);
 		if(retCode != 0) return retCode;
 
-		for(task in callOrder){
-			retCode = h.RunTask(task);
-			if ( retCode != 0)
-				return retCode;
-		}
+		retCode = h.RunTask(taskName);
+		if ( retCode != 0)
+			return retCode;
 
 		return retCode;
 	}
@@ -274,49 +264,41 @@ class HR
 		return retCode;
 	}
 
-	//Determines the order in which a set of tasks should be executed and spits
-	//it out in the form of an array of tasks
-	function determineTaskOrder(taskName:String, callOrder:Array<String>, insertionIndex:Int = 0, level:Int = 0){
-		var dependencies = dependencyMap[taskName];
-		if(level > 0 && level < 2)
-			callOrder.push(taskName);
-		else if(level > 0)
-			callOrder.insert(insertionIndex, taskName);
-
-		for(dep in dependencies){
-			if(callOrder.indexOf(dep) == -1) { //Have we checked this dependency yet?
-				if(insertionIndex - 1 < 0)
-					determineTaskOrder(dep, callOrder, 0, level + 1);
-				else
-					determineTaskOrder(dep, callOrder, insertionIndex - 1, level + 1);
-			}
-		}
-	}
-
 	function RunTask(taskName: String, ?showOutput:Bool = true):Int
 	{
+		var retCode = 0;
 		var tasks = parser.tasks.get(taskName);
 
 		//Now run each taskRef or command in sequence
 		for(i in 0...tasks.length){		
-			//See if this task is just a task reference. If it is, skip it
-			//these should already have been taken care of with the new dependency ordering
-			if(tasks[i].isTaskRef)
-				continue;
+			//See if this task is just a task reference. If it is, run it
+			if(tasks[i].isTaskRef){
+				retCode = RunTask(tasks[i].text);
+				if(retCode != 0) return retCode;
+			}
+			else { //Must be a command
+				//See if the command has any references to other task outputs
+				//if those tasks have not been executed, then execute them
+				var taskRefs = parser.GetEmbeddedTaskReferences(tasks[i]);
+				if(taskRefs != null){
+					for(t in taskRefs){
+						if(!taskResults.exists(t)){
+							retCode = RunTask(t);
+							if(retCode != 0) return retCode;
+						}
+					}
+				}
 
-			//See if the command has any references to other task outputs
-			//if so, add the task output in
-			// trace('$taskName: Expand variables');
-			parser.ExpandVariables(taskName);
-			// trace('$taskName: Expand taskOutput variables');
-			parser.ExpandVariables(taskName, taskResults);
+				//Expand out any task results that need to be expanded for this command
+				parser.Expand(tasks[i], taskResults);
 
-			//Run the command and if it fails, bail
-			var retCode = RunCommand(taskName, tasks[i].text, showOutput);
-			// trace('retCode: $retCode');
-			if (retCode != 0) return retCode;
+				//Run the command and if it fails, bail
+				var retCode = RunCommand(taskName, tasks[i].text, showOutput);
+				// trace('retCode: $retCode');
+				if (retCode != 0) return retCode;
+			}
 		}
-		return 0;
+		return retCode;
 	}
 
 	function Contains(val:String, arr:Array<Result>):Bool{
@@ -335,7 +317,6 @@ class HR
 		var output:String = proc.stdout.readAll().toString();
 		var err:String = proc.stderr.readAll().toString();
 		var retcode:Int = proc.exitCode();
-
 		proc.close();
 
 		if(output.length > 0){
@@ -433,19 +414,15 @@ class HrParser {
 
 	public static function ParseTokens(tokens:Array<Token>):HrParser{
 		var parser = new HrParser();
-		if(parser.Parse(tokens)) return parser;
-		else return null;
-	}
-
-	public function isAVariable(text:String):Bool{
-		if(text == null || text == "") return false;
-
-		//is it in embedded format?
-		if(repl.match(text)){
-			text = repl.matched(1) .substring(2, repl.matched(1).length - 1);
+		if(parser.Parse(tokens)) {
+			//Expand out all the variable references in the tasks' commands
+			for(task in parser.tasks.keys()){
+				parser.ExpandVariables(task);
+			}
+			return parser;
 		}
 
-		return variables.exists(text);
+		else return null;
 	}
 
 	//Use this function to log errors in this class
@@ -529,16 +506,15 @@ class HrParser {
 		return status;
 	}
 
-	 public function ExpandVariables(taskName:String, ?replacements:Map<String,String> = null){
+	//Expand all variables found within a tasks results
+	public function ExpandVariables(taskName:String){
 	 	if(taskName == null) return;
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
-		if(replacements == null) replacements = variables;
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences dont get expanded
-			Expand(taskSequence[i], replacements);
+			Expand(taskSequence[i], variables);
 		}
-
 	}
 
 	//Gets any task references embedded in this command
@@ -563,7 +539,7 @@ class HrParser {
 		}
 	}
 
-	function Expand(res:Result, replacements:Map<String,String>){
+	public function Expand(res:Result, replacements:Map<String,String>){
 		if(res == null || res.isTaskRef || replacements == null) return;
 
 		res.text = repl.map(res.text, function(reg:EReg){
