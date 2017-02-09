@@ -10,5 +10,3 @@ tasks
     buildDeploy = [:build, :deploy]
     bpd = [:build, :pack, :deploy]
     pd = [:pack,:deploy]
-    bd = [:build,:deploy]
-    #pdep = cmd.exe /C "upx -9 .\bin\Hr.exe" && "copy /Y .\bin\Hr.exe C:\utils"

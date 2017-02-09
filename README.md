@@ -15,7 +15,8 @@ A task key also supports an array of task where each value is a task name precee
 An optional variables section as shown below can be used to allow for more flexibility. To refer to a variable in a task,
 it must be enclosed in `|@variableName|` where `variableName` is the name of the variable defined in the variables section
 to which you want to refer (see below for examples). The output of tasks can also be used within the command of other
-tasks by enclosing the name of the task in the same manner (examples are shown in the example below). 
+tasks by enclosing the name of the task in the same manner (examples are shown in the example below). Variable names and task names
+are restricted to: 'A-Z', 'a-z' and '_'.
 An example `config.hr` file is shown below:
 
 ```php
@@ -28,23 +29,23 @@ An example `config.hr` file is shown below:
 
     tasks
         #Delete the zip file package if it exists
-        delete-zip= if exist "|@zipName|.zip" (del @zipName|.zip)
+        deleteZip= if exist "|@zipName|.zip" (del @zipName|.zip)
         #Get the file version of the main .exe so we can add it to the end of the zipfile name
         #assuming of course that MyUtil.exe is a .NET executable
-        file-version = powershell (Get-Item bin\Release\MyUtil.exe).VersionInfo.FileVersion
-        #Use 7za.exe to archive the package (note the reference to the file-version task)
-        zip = 7za.exe a -tzip |@zipName|_|@file-version|.zip README.txt Version.txt bin\Release\MyUtil.exe
+        fileVersion = powershell (Get-Item bin\Release\MyUtil.exe).VersionInfo.FileVersion
+        #Use 7za.exe to archive the package (note the reference to the fileVersion task)
+        zip = 7za.exe a -tzip |@zipName|_|@fileVersion|.zip README.txt Version.txt bin\Release\MyUtil.exe
         #Below is a task that runs several other tasks (note the task neames must all be preceeded by ':')
-        build-zip = [:delete-zip, :zip]
+        buildZip = [:deleteZip, :zip]
 
 
 ```
 
-To run the "build-zip" task, you type:
+To run the "buildZip" task, you type:
 
-`HR build-zip`
+`HR buildZip`
 
-This will run the `build-zip` task. This task happens to be an array which means it can only contain other 
+This will run the `buildZip` task. This task happens to be an array which means it can only contain other 
 tasks, and each of those tasks will be run in the order that they appear within the array. Tasks can, as 
 descibed above, refer to the output of another task, but circular references are not allowed.
 
@@ -54,6 +55,6 @@ Available tasks can be listed by typing:
 
 Verbose mode can be enabled by using the `-v` switch:
 
-`HR -v build-zip`
+`HR -v buildZip`
 
 Verbose mode will print the command itself to the console as well as the output of each command.

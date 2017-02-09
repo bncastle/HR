@@ -130,13 +130,13 @@ class HR
 	function ParseConfig(cfgFile:String): Bool
 	{
 		tokens = tokenizer.parseFile(cfgFile);
+
+		//Print out all our tokens
+		// for(t in tokens)
+		// 	Sys.println('${t.type} => ${t.lexeme}');
+
 		if(tokens != null && !tokenizer.wasError){
 			parser = HrParser.ParseTokens(tokens);
-			
-			//Print out all our tokens
-			// for(t in tokens)
-			// 	Sys.println('${t.type} => ${t.lexeme}');
-
 			return (parser != null && !parser.wasError);
 		}
 		else return false;
