@@ -16,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.52";
+	static inline var VERSION = "0.53";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -731,7 +731,7 @@ class HrTokenizer{
 					addToken(HrToken.rightBracket);
 				case '='.code :
 					if(prevTokenType == HrToken.variableSection || prevTokenType == HrToken.taskSection)
-						logError("section headings not allowed on hte left side of an ="); 
+						logError("section headings not allowed on the left side of an ="); 
 					else if(prevTokenType != HrToken.identifier)
 						logError("Identifier expected before ="); 
 					addToken(HrToken.equals);
@@ -816,8 +816,9 @@ class HrTokenizer{
 		while(!isEof() && chars.indexOf(peek()) == -1 ) nextChar();
 	}
 
+	//If we call this function, then we already know that the first character is an alpha
 	function matchIdentifier(){
-		while(isAlpha(peek())) nextChar();
+		while(isAlpha(peek()) || isDigit(peek())) nextChar();
 	}
 
 	function isEof():Bool{
@@ -828,6 +829,10 @@ class HrTokenizer{
 		return (ch >= 'a'.code && ch <= 'z'.code) || (ch >= 'A'.code && ch <= 'Z'.code) || ch == '_'.code;
 	}
 
+	function isDigit(ch:Int):Bool{
+		return ch >= '0'.code && ch <= '9'.code;
+	}
+
 	function nextChar(): Int {
 		index++;
 		col++;
@@ -835,8 +840,6 @@ class HrTokenizer{
 	}
 
 	//peeks at the next character in the stream
-	//Note: a lookahead of 0 will return the NEXT character
-	//      a lookahead of 1 will return the char after that
 	function peek():Int {
 		if(isEof()) return 0;
 		return content.fastCodeAt(index);
