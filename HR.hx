@@ -16,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.51";
+	static inline var VERSION = "0.52";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -39,7 +39,6 @@ class HR
 			log("===================================");
 			log("Usage: HR.exe [-v] ['name of config file'.hr] <task_taskName>");
 			log("-v prints out each command as it is executed");
-			log("If no config file is specified, HR looks for a config.hr file where it was executed");
 		}
 
 		var h = new HR();
@@ -47,10 +46,10 @@ class HR
 
 		//Here we allow the user to specify a different config file name
 		//but it must end in .hr. Also, for now, it must be in the same directory
-		var cfgFile:String = h.CheckForAlternateConfigFilename();
+		var cfgFile:String = h.checkArgsForAlternateConfigFilename();
 		if(cfgFile == null){
 			//Note: We want the config file in the directory where we were invoked!
-			cfgFile = Path.join([Sys.getCwd(), CFG_FILE]);
+			cfgFile = HR.findDefaultorFirstConfigFile(Sys.getCwd());
 		}
 		else{
 			cfgFile = Path.join([Sys.getCwd(), cfgFile]);
@@ -59,16 +58,16 @@ class HR
 
 		if (!HR.CheckForConfigFile(cfgFile))
 		{
-			error('Unable to find config file: ${Path.withoutDirectory(cfgFile)}');
+			error('Unable to find "${Path.withoutDirectory(cfgFile)}"');
 			log('Make a ${Path.withoutDirectory(cfgFile)} file and put it in your project directory.');
 			return -1;
 		}
 
 		//Verbose mode?
-		h.CheckVerboseFlag();
+		h.checkVerboseFlag();
 
 		//Get the task to execute
-		var taskName:String = h.CheckForTaskName();
+		var taskName:String = h.checkForTaskName();
 
 		//Parse the config file
 		if (!h.ParseConfig(cfgFile))
@@ -128,7 +127,7 @@ class HR
 	}
 
 	//Checks for the presence of the verbose flag
-	function CheckVerboseFlag():Void{
+	function checkVerboseFlag():Void{
 		var arg = Sys.args()[0].trim();
 		if(arg == '-v') {
 			verbose = true;
@@ -137,20 +136,45 @@ class HR
 		verbose = false;
 	}
 
-	function CheckForAlternateConfigFilename():String{
+	function checkArgsForAlternateConfigFilename():String{
 		for(arg in Sys.args()){
 			arg = arg.trim();
-			if(Path.extension(arg) == "hr")
-				return arg;
+			if(Path.extension(arg) == "hr") return arg;
 		}
 		return null;
 	}
 
-	function CheckForTaskName():String{
+	function checkForTaskName():String{
 		//A task name spec MUST be the last argument so
 		var arg = Sys.args()[Sys.args().length - 1].trim();
-		if(arg.charAt(0) == '-' || (arg.substring(arg.length - 3) == '.hr')) return null; //it's a switch, continue
+		if(arg.charAt(0) == '-' || Path.extension(arg) == "hr") return null; //it's a switch, continue
 		else return arg; // must be a task spec
+	}
+
+	//This is executed when no file is specified
+	//if it can find the default CFG_FILE, it will return that
+	//otherwise, it will look for another .hr file and return that
+	//if it finds no .hr files, it will return CFG_FILE
+	static function findDefaultorFirstConfigFile(dir:String): String {
+		var files = FileSystem.readDirectory(Path.directory(dir));
+		if(files == null || files.length == 0) return CFG_FILE;
+		//Sort alphabetically
+		files.sort(sortAlphabetically);
+
+		if(files.indexOf(CFG_FILE) > -1) return CFG_FILE;
+		
+		for(file in files){
+			if(Path.extension(file) == "hr") return file;
+		}
+		return CFG_FILE;
+	}
+
+	static function sortAlphabetically(a:String, b:String): Int{
+		a = a.toUpperCase();
+		b = b.toUpperCase();
+		if(a < b) return -1;
+		else if(a > b) return 1;
+		else return 0;
 	}
 
 	function ParseConfig(cfgFile:String): Bool{
@@ -359,7 +383,8 @@ class HR
 	}
 
 	function PrintAvailableTasks(cfgFilename:String){
-		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}""');
+		log('');
+		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}"');
 		for	(taskName in parser.tasks.keys()){
 			log(taskName);
 		}

@@ -9,7 +9,8 @@ The .exe will be found in `bin` directory.
 
 ## Usage
 
-HR uses a special `config.hr` file located in the root of the directory where you want to run the tasks. Each
+HR looks for a special `config.hr` file located in the root of the directory where you want to run tasks.
+If it can't find config.hr, then it looks for any file within the directory with a .hr extension. Each
 task is a key=value pair where the key identifies the task by name and the value is the command to be executed.
 A task key also supports an array of task where each value is a task name preceeded by a `:` (see below example).
 An optional variables section as shown below can be used to allow for more flexibility. To refer to a variable in a task,
@@ -58,3 +59,8 @@ Verbose mode can be enabled by using the `-v` switch:
 `HR -v buildZip`
 
 Verbose mode will print the command itself to the console as well as the output of each command.
+
+Alternate config files can exist in the same directory and can be used by specifying its name before the desired task:
+
+`HR myConfig.hr rakeLeaves`
+
