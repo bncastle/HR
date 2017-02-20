@@ -1,6 +1,7 @@
 import sys.FileSystem;
 import sys.io.File;
 import sys.io.Process;
+import haxe.io.Path;
 using StringTools;
 
 // @author Bryan Castleberry
@@ -15,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.5";
+	static inline var VERSION = "0.51";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -33,32 +34,41 @@ class HR
 	{
 		log('\nHR Version $VERSION: A task runner.');
 		log("Copyright 2017 Pixelbyte Studios");
-
-		//Note this: We want the config file in the directory where we were invoked!
-		var cfgFile:String = Sys.getCwd() + CFG_FILE;
-		var printTasks:Bool = false;
-		var retCode:Int = 0;
-
 		if (Sys.args().length < 1)
 		{
 			log("===================================");
-			log("Usage: HR.exe [-v] <task_taskName>");
+			log("Usage: HR.exe [-v] ['name of config file'.hr] <task_taskName>");
 			log("-v prints out each command as it is executed");
-			// log("-t (prints a list of valid tasks)");
-
-			if (!HR.CheckForConfigFile(cfgFile))
-			{
-				log('Make a $CFG_FILE file and put it in your project directory.');
-				return -1;
-			}
-			else{
-				log("");
-				printTasks = true;
-			}
+			log("If no config file is specified, HR looks for a config.hr file where it was executed");
 		}
 
 		var h = new HR();
-		var taskIndex = 0;
+		var retCode:Int = 0;
+
+		//Here we allow the user to specify a different config file name
+		//but it must end in .hr. Also, for now, it must be in the same directory
+		var cfgFile:String = h.CheckForAlternateConfigFilename();
+		if(cfgFile == null){
+			//Note: We want the config file in the directory where we were invoked!
+			cfgFile = Path.join([Sys.getCwd(), CFG_FILE]);
+		}
+		else{
+			cfgFile = Path.join([Sys.getCwd(), cfgFile]);
+			//cfgFile = Path.directory(cfgFile);
+		}
+
+		if (!HR.CheckForConfigFile(cfgFile))
+		{
+			error('Unable to find config file: ${Path.withoutDirectory(cfgFile)}');
+			log('Make a ${Path.withoutDirectory(cfgFile)} file and put it in your project directory.');
+			return -1;
+		}
+
+		//Verbose mode?
+		h.CheckVerboseFlag();
+
+		//Get the task to execute
+		var taskName:String = h.CheckForTaskName();
 
 		//Parse the config file
 		if (!h.ParseConfig(cfgFile))
@@ -67,9 +77,9 @@ class HR
 		}
 
 		//print all tasks in the file
-		if (printTasks)
+		if (taskName == null)
 		{
-			h.PrintAvailableTasks();
+			h.PrintAvailableTasks(cfgFile);
 			return -1;
 		}
 
@@ -89,16 +99,6 @@ class HR
 			error('Cyclical dependencies found in "$CFG_FILE".');
 			return retCode;
 		}
-
-		//Verbose mode?
-		if (Sys.args()[0] == "-v")
-		{
-			h.verbose = true;
-			taskIndex++;
-		}
-
-		//Get the task to execute
-		var taskName:String = Sys.args()[taskIndex];
 
 		//Does the task exist?
 		if(!h.parser.tasks.exists(taskName)){
@@ -127,8 +127,33 @@ class HR
 		dependencyMap= new Map<String,Array<String>>();
 	}
 
-	function ParseConfig(cfgFile:String): Bool
-	{
+	//Checks for the presence of the verbose flag
+	function CheckVerboseFlag():Void{
+		var arg = Sys.args()[0].trim();
+		if(arg == '-v') {
+			verbose = true;
+			return;
+		}
+		verbose = false;
+	}
+
+	function CheckForAlternateConfigFilename():String{
+		for(arg in Sys.args()){
+			arg = arg.trim();
+			if(Path.extension(arg) == "hr")
+				return arg;
+		}
+		return null;
+	}
+
+	function CheckForTaskName():String{
+		//A task name spec MUST be the last argument so
+		var arg = Sys.args()[Sys.args().length - 1].trim();
+		if(arg.charAt(0) == '-' || (arg.substring(arg.length - 3) == '.hr')) return null; //it's a switch, continue
+		else return arg; // must be a task spec
+	}
+
+	function ParseConfig(cfgFile:String): Bool{
 		tokens = tokenizer.parseFile(cfgFile);
 
 		//Print out all our tokens
@@ -333,8 +358,8 @@ class HR
 		return retcode;
 	}
 
-	function PrintAvailableTasks(){
-		log("Available Tasks:");
+	function PrintAvailableTasks(cfgFilename:String){
+		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}""');
 		for	(taskName in parser.tasks.keys()){
 			log(taskName);
 		}
