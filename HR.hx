@@ -16,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.53";
+	static inline var VERSION = "0.54";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -51,10 +51,9 @@ class HR
 			//Note: We want the config file in the directory where we were invoked!
 			cfgFile = HR.findDefaultorFirstConfigFile(Sys.getCwd());
 		}
-		else{
-			cfgFile = Path.join([Sys.getCwd(), cfgFile]);
-			//cfgFile = Path.directory(cfgFile);
-		}
+
+		cfgFile = Path.join([Sys.getCwd(), cfgFile]);
+
 
 		if (!HR.CheckForConfigFile(cfgFile))
 		{
