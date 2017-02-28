@@ -16,7 +16,7 @@ using StringTools;
 
 class HR
 {
-	static inline var VERSION = "0.54";
+	static inline var VERSION = "0.55";
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -229,7 +229,6 @@ class HR
 				}
 			}
 		}
-				
 		return stack;
 	}
 
@@ -338,6 +337,7 @@ class HR
 				}
 
 				//Expand out any task results that need to be expanded for this command
+				trace('Expand for ${tasks[i]}');
 				parser.Expand(tasks[i], taskResults);
 
 				//Run the command and if it fails, bail
@@ -362,21 +362,61 @@ class HR
 			log('\nRun: $cmd');
 
 		var proc = new Process(cmd);
-		var retcode:Int = proc.exitCode();
-		var output:String = proc.stdout.readAll().toString();
-		var err:String = proc.stderr.readAll().toString();
-		proc.close();
 
-		if(output.length > 0){
-			if(taskName != null){
-				// trace('Set results for $taskName => |$output|');
-				taskResults.set(taskName, output.rtrim());
+		//TODO: Maybe Make this work for Mac/Linux too
+		//Number of read Eof exceptions we have:
+		//failures = 0 stdout, 1 stderr, 2 stdout, > 2 break
+		//This is the only way I know to do this since Haxe currently has
+		//no way on WINDOWS to determine if a task is still running
+		//and no, proc.exitCode(false) doesn't work in WINDOWS
+		var failures:Int = 0;
+		var output:StringBuf = new StringBuf();
+		var err:StringBuf = new StringBuf();
+
+		while(true){
+			if(failures > 2) break;
+			else if(failures == 1){
+				try{
+					var ch = proc.stderr.readString(1);
+
+					err.add(ch);
+					if(showOutput)
+						Sys.print(ch);
+
+					failures = 0;
+				}
+				catch(e:haxe.io.Eof){
+					failures++;
+				}
 			}
-			if(showOutput)
-				Sys.print(output);
+			else{
+				try{
+					var ch = proc.stdout.readString(1);
+
+					output.add(ch);
+					if(showOutput)
+						Sys.print(ch);
+
+					failures = 0;
+				}
+				catch(e:haxe.io.Eof){
+					failures++;
+				}				
+			}
 		}
-		 if(err.length > 0)
-			Sys.print(err);
+
+		//When the process is done (i.e. no more output written to stdout or stderr), get the exit code
+		var retcode:Int = proc.exitCode();
+		 proc.close();
+
+		 if(output.length > 0){
+		 	if(taskName != null){
+		 		// trace('Set results for $taskName => |$output|');
+		 		taskResults.set(taskName, output.toString().rtrim());
+		 	}
+		 }
+
+		 //TODO: If there is an error, should we add that to the taskResults too??
 
 		return retcode;
 	}
@@ -558,7 +598,7 @@ class HrParser {
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
 		for(i in 0 ... taskSequence.length){
-			if(taskSequence[i].isTaskRef) continue; //taskReferences dont get expanded
+			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
 			Expand(taskSequence[i], variables);
 		}
 	}
