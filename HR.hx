@@ -11,12 +11,16 @@ using StringTools;
 //https://github.com/bncastle/hix
 //
 //::hix -main HR --no-traces -dce full -cpp bin
-//::hix:neko -main HR --no-traces -dce full -neko hr.n
 //::hix:debug -main HR -cpp bin
 
+//c++ stuff
+typedef VoidPointer = cpp.RawPointer<cpp.Void>;
+
+@:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.55";
+	static inline var VERSION = "0.56";
+	static inline var STILL_ACTIVE = 259;
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
@@ -358,56 +362,58 @@ class HR
 
 	function RunCommand(taskName:String, cmd:String, showOutput:Bool):Int{
 		//If we are in verbose mode, print the command too
-		if(verbose){}
+		if(verbose){
 			log('\nRun: $cmd');
-
+		}
+		
 		var proc = new Process(cmd);
+		var pid = proc.getPid();
 
-		//TODO: Maybe Make this work for Mac/Linux too
-		//Number of read Eof exceptions we have:
-		//failures = 0 stdout, 1 stderr, 2 stdout, > 2 break
-		//This is the only way I know to do this since Haxe currently has
-		//no way on WINDOWS to determine if a task is still running
-		//and no, proc.exitCode(false) doesn't work in WINDOWS
-		var failures:Int = 0;
+		var procHandle:VoidPointer = getProcessHandle(pid);
+
+		var failed:Bool = false;
 		var output:StringBuf = new StringBuf();
 		var err:StringBuf = new StringBuf();
 
-		while(true){
-			if(failures > 2) break;
-			else if(failures == 1){
+		//proc.exitCode(false) doesn't work in WINDOWS
+		//so I've tapped into the winapi in order to
+		//report output from the process as it happens
+		while(procRunning(procHandle)){
+			if(!failed){
 				try{
-					var ch = proc.stderr.readString(1);
-
-					err.add(ch);
-					if(showOutput)
-						Sys.print(ch);
-
-					failures = 0;
+					var ch = proc.stdout.readString(1);
+					output.add(ch);
+					if(showOutput) Sys.print(ch);
 				}
 				catch(e:haxe.io.Eof){
-					failures++;
+					failed = true;
 				}
 			}
 			else{
 				try{
-					var ch = proc.stdout.readString(1);
-
-					output.add(ch);
-					if(showOutput)
-						Sys.print(ch);
-
-					failures = 0;
-				}
+					var ch = proc.stderr.readString(1);
+					err.add(ch);
+					if(showOutput) Sys.print(ch);
+				}	
 				catch(e:haxe.io.Eof){
-					failures++;
-				}				
+					failed = false;
+				}
 			}
+			//Don't hog the CPU
+			// Sys.sleep(0.001);
 		}
+		closeHandle(procHandle);
+
+		//Get any leftover output from the process
+		var leftover = proc.stdout.readAll().toString();
+		output.add(leftover);
+		if(showOutput) Sys.print(leftover);
+		var leftoverErr = proc.stderr.readAll().toString();
+		if(showOutput) Sys.print(leftoverErr);
 
 		//When the process is done (i.e. no more output written to stdout or stderr), get the exit code
 		var retcode:Int = proc.exitCode();
-		 proc.close();
+		proc.close();
 
 		 if(output.length > 0){
 		 	if(taskName != null){
@@ -437,6 +443,40 @@ class HR
 			return false;
 		}
 		return true;
+	}
+
+	// static var exit_code:Int->Int->Bool = cpp.Lib.load("kernel32", "GetExitCodeProcess", 2);
+	@:functionCode("
+		return OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, procId);
+	")
+	static function getProcessHandle(procId:Int):VoidPointer{
+		#if !cpp
+			return null;
+		#else
+			return null;
+		#end
+	}
+
+	//My external C functions////////////////////////
+	@:functionCode("
+		CloseHandle(handle);
+	")
+	static function closeHandle(handle:VoidPointer){
+
+	}
+
+	//Gets the exit code from a given process id
+	@:functionCode("
+		DWORD exitCode;
+		GetExitCodeProcess(handle, &exitCode);
+		return exitCode == STILL_ACTIVE;
+	")
+	static function procRunning(handle:VoidPointer):Bool{
+			#if !cpp
+				return false;
+			#else
+				return false;
+			#end
 	}
 }
 
