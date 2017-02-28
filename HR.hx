@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.56";
+	static inline var VERSION = "0.57";
 	static inline var STILL_ACTIVE = 259;
 	static inline var CFG_FILE = "config.hr";
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -184,8 +184,8 @@ class HR
 		tokens = tokenizer.parseFile(cfgFile);
 
 		//Print out all our tokens
-		// for(t in tokens)
-		// 	Sys.println('${t.type} => ${t.lexeme}');
+		//  for(t in tokens)
+		//  	trace('${t.type} => ${t.lexeme}');
 
 		if(tokens != null && !tokenizer.wasError){
 			parser = HrParser.ParseTokens(tokens);
@@ -218,6 +218,7 @@ class HR
 		//for each task in tasks look for direct dependencies
 		for(i in 0 ... tasks.length){
 			if(tasks[i].isTaskRef){
+			Sys.println(tasks[i].text);
 				stack.push(tasks[i].text);
 			}
 			else{ //it must be a command so get those deps
@@ -227,6 +228,7 @@ class HR
 				if(cmdDeps != null){
 					for(j in 0 ... cmdDeps.length){ //if this dep is not already on the stack, push it
 						if(stack.indexOf(cmdDeps[j]) == -1){
+							// Sys.println(taskName + " - " + cmdDeps[j]);
 							stack.push(cmdDeps[j]);
 						}
 					}
@@ -243,6 +245,11 @@ class HR
 		//to check for cyclical deps, etc
 		for(task in parser.tasks.keys()){
 			var deps = getDirectDependencies(task);
+			
+			// trace('Dependencies for ${task}:');
+			// for(d in deps){
+			// 	trace(d);
+			// }
 			if(deps != null)
 				map.set(task, deps);
 		}
@@ -341,7 +348,7 @@ class HR
 				}
 
 				//Expand out any task results that need to be expanded for this command
-				trace('Expand for ${tasks[i]}');
+				// trace('Expand for ${tasks[i]}');
 				parser.Expand(tasks[i], taskResults);
 
 				//Run the command and if it fails, bail
@@ -365,7 +372,7 @@ class HR
 		if(verbose){
 			log('\nRun: $cmd');
 		}
-		
+
 		var proc = new Process(cmd);
 		var pid = proc.getPid();
 
@@ -547,7 +554,6 @@ class HrParser {
 			}
 			return parser;
 		}
-
 		else return null;
 	}
 
@@ -652,12 +658,11 @@ class HrParser {
 				var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
 				for(key in variables.keys()){
 					if(variableName == key){ return "";}
-					else{
-						//Make sure this taskref is not already in the list of deps AND it isnt a variable
-						if(deps.indexOf(variableName) == -1 && !variables.exists(variableName))
-							deps.push(variableName);
-					}
 				}
+
+				//Make sure this taskref is not already in the list of deps AND it isnt a variable
+				if(deps.indexOf(variableName) == -1 && !variables.exists(variableName))
+					deps.push(variableName);
 				return "";
 			});
 			if(deps.length > 0) return deps;
