@@ -5,7 +5,9 @@ variables
 tasks 
     build = haxe build.hxml
     pack = |@UPX| .\bin\Hr.exe
+    delete = if exist |@DestDir|\hr.exe.old del |@DestDir|\hr.exe.old
+    rename = ren |@DestDir|\hr.exe hr.exe.old
     deploy = copy /Y .\bin\Hr.exe |@DestDir|
-    buildDeploy = [:build, :deploy]
+    buildDeploy = [:build, :delete, :rename, :deploy]
     bpd = [:build, :pack, :deploy]
     pd = [:pack,:deploy]

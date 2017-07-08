@@ -19,9 +19,9 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.57";
-	static inline var STILL_ACTIVE = 259;
+	static inline var VERSION = "0.58";
 	static inline var CFG_FILE = "config.hr";
+	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
 	static inline var ERR_CYCLIC_DEPENDENCE = -1026;
 	static inline var ERR_NO_TASKS_FOUND = -1027;
@@ -218,7 +218,7 @@ class HR
 		//for each task in tasks look for direct dependencies
 		for(i in 0 ... tasks.length){
 			if(tasks[i].isTaskRef){
-			Sys.println(tasks[i].text);
+			// Sys.println(tasks[i].text);
 				stack.push(tasks[i].text);
 			}
 			else{ //it must be a command so get those deps
