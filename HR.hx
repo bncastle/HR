@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.58";
+	static inline var VERSION = "0.59";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -374,9 +374,7 @@ class HR
 		}
 
 		var proc = new Process(cmd);
-		var pid = proc.getPid();
-
-		var procHandle:VoidPointer = getProcessHandle(pid);
+		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
 		var failed:Bool = false;
 		var output:StringBuf = new StringBuf();
@@ -525,7 +523,9 @@ class Result {
 
 class HrParser {
 	//This is what a variable looks like in the value field
-	static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
+	// static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
+	//A variable is @variable
+	static var repl:EReg = ~/@([A-Za-z0-9_]+)/gi;
 
 	//Maps the variables to their values
 	var variables:Map<String,String>;
@@ -655,7 +655,7 @@ class HrParser {
 		else{
 			var deps:Array<String> = [];
 			repl.map(cmd.text, function(reg:EReg){
-				var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
+				var variableName = reg.matched(1);
 				for(key in variables.keys()){
 					if(variableName == key){ return "";}
 				}
@@ -674,8 +674,7 @@ class HrParser {
 		if(res == null || res.isTaskRef || replacements == null) return;
 
 		res.text = repl.map(res.text, function(reg:EReg){
-			//Remove the surrounding '|' and the '@'
-			var variableName = reg.matched(1).substring(2, reg.matched(1).length - 1);
+			var variableName = reg.matched(1);
 			// trace('Expand found:${variableName} from |$res|');
 			for(key in replacements.keys()){
 				if(variableName == key){
