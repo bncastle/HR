@@ -58,7 +58,6 @@ class HR
 
 		cfgFile = Path.join([Sys.getCwd(), cfgFile]);
 
-
 		if (!HR.CheckForConfigFile(cfgFile))
 		{
 			error('Unable to find "${Path.withoutDirectory(cfgFile)}"');

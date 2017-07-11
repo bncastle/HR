@@ -1,13 +1,14 @@
-#This is a comment
+#This is an HR file for building the HR executable
 variables
     UPX = c:\utils\upx.exe -9
     DestDir = C:\utils
+    ExeName= hr.exe
 tasks 
     build = haxe build.hxml
     pack = @UPX @DestDir\Hr.exe
-    delete = if exist @DestDir\hr.exe.old del @DestDir\hr.exe.old
-    rename = ren @DestDir\hr.exe hr.exe.old
-    deploy = copy /Y .\bin\Hr.exe @DestDir
+    delete = if exist @DestDir\@ExeName.old del @DestDir\@ExeName.old
+    rename = ren @DestDir\@ExeName @ExeName.old
+    deploy = copy /Y .\bin\@ExeName @DestDir
     buildDeploy = [:build, :delete, :rename, :deploy :pack]
     bpd = [:build, :pack, :deploy]
     pd = [:pack,:deploy]
