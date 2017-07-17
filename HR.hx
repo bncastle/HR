@@ -4,7 +4,7 @@ import sys.io.Process;
 import haxe.io.Path;
 using StringTools;
 
-// @author Bryan Castleberry
+// @author: Pixelbyte Studios
 //
 //The comments below are meant to utilize my Hix utility to compile/run
 //without needing a build.hxml or command line options. Hix can be found here:
@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.59";
+	static inline var VERSION = "0.60";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -33,6 +33,8 @@ class HR
 	var tokens:Array<Token>;
 	var taskResults:Map<String,String>;
 	var dependencyMap:Map<String,Array<String>>;
+
+	// var byteBuffer: haxe.io.Bytes;
 
 	static function main(): Int
 	{
@@ -126,6 +128,8 @@ class HR
 		tokenizer = new HrTokenizer();
 		taskResults= new Map<String,String>();
 		dependencyMap= new Map<String,Array<String>>();
+
+		// byteBuffer = haxe.io.Bytes.alloc(1);
 	}
 
 	//Checks for the presence of the verbose flag
@@ -366,6 +370,35 @@ class HR
 		return false;
 	}
 
+	// function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, stringPipe:StringBuf) : Bool{
+	// 	try{
+	// 		if(sourceInput.readBytes(byteBuffer, 0 ,1) <= 0)
+	// 			return false;
+	// 		else{
+	// 			filePipe.writeByte(byteBuffer.get(0));
+	// 			stringPipe.addChar(byteBuffer.get(0));
+	// 			// if(byteBuffer.get(0) == '\n'.code) return false;
+	// 			return true;
+	// 		}
+	// 	}
+	// 	catch(e:Dynamic){
+	// 		// Sys.print('!');			
+	// 		return false;
+	// 	}
+	// }
+
+	function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, stringPipe:StringBuf) : Bool{
+		try{
+			var ch = sourceInput.readString(1);
+			filePipe.writeString(ch);
+			stringPipe.add(ch);
+			return true;
+		}
+		catch(e:Dynamic){
+			return false;
+		}
+	}
+
 	function RunCommand(taskName:String, cmd:String, showOutput:Bool):Int{
 		//If we are in verbose mode, print the command too
 		if(verbose){
@@ -375,34 +408,22 @@ class HR
 		var proc = new Process(cmd);
 		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
-		var failed:Bool = false;
+		var iserror:Bool = false;
 		var output:StringBuf = new StringBuf();
-		var err:StringBuf = new StringBuf();
 
 		//proc.exitCode(false) doesn't work in WINDOWS
 		//so I've tapped into the winapi in order to
 		//report output from the process as it happens
 		while(procRunning(procHandle)){
-			if(!failed){
-				try{
-					var ch = proc.stdout.readString(1);
-					output.add(ch);
-					if(showOutput) Sys.print(ch);
-				}
-				catch(e:haxe.io.Eof){
-					failed = true;
-				}
-			}
-			else{
-				try{
-					var ch = proc.stderr.readString(1);
-					err.add(ch);
-					if(showOutput) Sys.print(ch);
-				}	
-				catch(e:haxe.io.Eof){
-					failed = false;
-				}
-			}
+			if(!iserror && !Pipe(proc.stdout, Sys.stdout(), output)) iserror = true;
+			else if(iserror && !Pipe(proc.stderr, Sys.stderr(), output)) iserror = false;
+			// if(!iserror && (!Pipe(proc.stdout, Sys.stdout(), output) || Pipe(proc.stderr, Sys.stderr(), output))){
+			// 		iserror = true;
+			// }	
+			// else if(iserror && !Pipe(proc.stderr, Sys.stderr(), output)){
+			// 	iserror = false;
+			// }
+
 			//Don't hog the CPU
 			// Sys.sleep(0.001);
 		}
@@ -412,8 +433,9 @@ class HR
 		var leftover = proc.stdout.readAll().toString();
 		output.add(leftover);
 		if(showOutput) Sys.print(leftover);
-		var leftoverErr = proc.stderr.readAll().toString();
-		if(showOutput) Sys.print(leftoverErr);
+		leftover = proc.stderr.readAll().toString();
+		if(showOutput) Sys.print(leftover);
+		output.add(leftover);
 
 		//When the process is done (i.e. no more output written to stdout or stderr), get the exit code
 		var retcode:Int = proc.exitCode();
@@ -425,8 +447,6 @@ class HR
 		 		taskResults.set(taskName, output.toString().rtrim());
 		 	}
 		 }
-
-		 //TODO: If there is an error, should we add that to the taskResults too??
 
 		return retcode;
 	}
