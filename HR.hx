@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.61";
+	static inline var VERSION = "0.63";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -46,6 +46,11 @@ class HR
 			log("Usage: HR.exe [-v] ['name of config file'.hr] <task_taskName>");
 			log("-v prints out each command as it is executed");
 		}
+
+		// var ht = new HrTokenizer();
+		// var toks = ht.parseText("test(");
+		// for(t in toks)
+		//  trace('${t.type}: ${t.lexeme}');
 
 		var h = new HR();
 		var retCode:Int = 0;
@@ -187,8 +192,8 @@ class HR
 		tokens = tokenizer.parseFile(cfgFile);
 
 		//Print out all our tokens
-		//  for(t in tokens)
-		//  	trace('${t.type} => ${t.lexeme}');
+		// for(t in tokens)
+		// trace('${t.type}: ${t.lexeme}');
 
 		if(tokens != null && !tokenizer.wasError){
 			parser = HrParser.ParseTokens(tokens);
@@ -505,7 +510,7 @@ class HR
 
 enum HrToken{
 	//Single-character tokens
-    leftBracket; rightBracket; equals; comma;
+    leftBracket; rightBracket; equals; comma; leftParen; rightParen;
 	//Keywords
 	variableSection; taskSection;
 	//DataTypes
@@ -513,6 +518,8 @@ enum HrToken{
 	//other
 	none; eof;
 }
+
+enum ConfigSection{ none; variables; tasks;}
 
 class Token{
 	public var type(default,null):HrToken;
@@ -532,9 +539,59 @@ class Token{
 	}
 }
 
+class ParameterizedTask{
+	public var name(default, null):String;
+	public var text:String;
+	public var parameters:Array<String>;
+	public var NumParams(get, null):Int;
+	function get_NumParams():Int{return parameters.length;}
+
+	public function new(taskName:String, text:String, params:Array<String>){
+		name = taskName;
+		this.text = text;
+		parameters = new Array<String>();
+		if(params != null && params.length > 0){
+			for(p in params){
+				if(parameters.indexOf(p) == -1)
+					parameters.push(p);
+			}
+		}
+	}
+
+	public function call(inputParams:Array<String>):String{
+		if(inputParams == null || parameters.length != inputParams.length) { trace('called: ${name} parameters incorrect!'); return "";}
+		var newString:String = this.text;
+		//Parameters are specified in order
+		// static var varRegex:EReg = ~/@([A-Za-z0-9_]+)/gi;
+		for(i in 0...parameters.length ){
+			var search:EReg = new EReg('\\$(${parameters[i]})','gi');
+			newString = search.replace(newString, inputParams[i]);
+		}
+		return newString;
+	}
+
+	public function toString():String{
+		var sb:StringBuf = new StringBuf();
+		sb.add('Name: $name\n');
+		sb.add('Parameters: ');
+		
+		for	(p in parameters){
+			sb.add(p);
+			sb.add(' ');
+		}
+
+		sb.add('Text: ');
+		sb.add(text);
+
+		return sb.toString();
+	}
+}
+
 class Result {
 	public var text:String;
 	public var isTaskRef(default,null):Bool;
+
+
 	public function new(cmd:String, isTaskName:Bool){text = cmd; isTaskRef = isTaskName;}
 	public function toString():String{return '${isTaskRef ? "TASK":"Cmd"}:${text}';	}
 }
@@ -544,12 +601,16 @@ class HrParser {
 	// static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
 	//A variable is @variable
 	static var varRegex:EReg = ~/@([A-Za-z0-9_]+)/gi;
+	static var paramTaskRegex:EReg = ~/_([A-Za-z0-9_]+\([^\)]+\))/gi;
 
 	//Maps the variables to their values
 	var variables:Map<String,String>;
 
 	//Maps the task name to its command
 	public var tasks(default,null):Map<String,Array<Result>>;
+
+	public var parameterizedTasks(default, null): Map<String, ParameterizedTask>;
+	var pTaskTokenizer:HrTokenizer;
 
 	//Contains any tasks that are as of yet undefined
 	var undefinedTasks:Array<String>;
@@ -559,7 +620,9 @@ class HrParser {
 	private function new(){
 		variables = new Map<String,String>();
 		tasks = new Map<String,Array<Result>>();
+		parameterizedTasks = new Map<String, ParameterizedTask>();
 		undefinedTasks = new Array<String>();
+		pTaskTokenizer= new HrTokenizer();
 		wasError = false;
 	}
 
@@ -570,7 +633,11 @@ class HrParser {
 			for (v in parser.variables.keys()){
 				parser.ExpandVariablesWithinVariable(v);
 			}
+			for(pt in parser.parameterizedTasks){
+				parser.ExpandVariablesWithinParameterizedTask(pt);
+			}
 			for(task in parser.tasks.keys()){
+				parser.ExpandParameterizedTasksWithinTask(task);
 				parser.ExpandVariablesWithinTask(task);
 			}
 			return parser;
@@ -589,44 +656,89 @@ class HrParser {
 	}	
 
 	private function Parse(tokens:Array<Token>):Bool{
+		if(tokens == null || tokens.length < 1){
+			logError("No tokens to parse!");
+			return false;
+		}
+
 		//tells which section we're in 0 = variables, 1 = commands
-		var section:Int = -1;
+		var section:ConfigSection = ConfigSection.none;
 		var id:String = "";
 		var inArray:Int = 0;
+		var tkIndex = 0;
 
-		for(tk in tokens){
+		var current = function():Token { return tkIndex < tokens.length ? tokens[tkIndex] : null;}
+		var exists = function(type: HrToken, startIndex:Int = 0):Bool { 
+			startIndex = cast Math.min(Math.max(0, startIndex), tokens.length - 1); 
+			for(i in startIndex...tokens.length) if(tokens[i].type == type) return true;
+			return false;
+			}
+		var previous = function():Token { return tkIndex - 1 >= 0 ? tokens[tkIndex - 1] : null;}
+		var next = function():Token { return tkIndex + 1 < tokens.length ? tokens[tkIndex + 1] : null;}
+		
+		var inParameterList:Bool = false;	
+		var parameterArray:Array<String> = null;
+
+		while(current() != null){
+			var tk = current();
 			switch(tk.type){
 				case HrToken.variableSection:
-					section = 0;
+					section = ConfigSection.variables;
 				case HrToken.taskSection:
-					section = 1;
+					section = ConfigSection.tasks;
 				case HrToken.identifier:
 						if(inArray == 0){
-							id = tk.lexeme;
+							if(!inParameterList){
+								id = tk.lexeme;
+							}
+							else{
+								parameterArray.push(tk.lexeme);
+							}
 						}
-						else {//We're in an array and this is a taskName. Store it for checking
+						else {
+							//We're in an array and this is a taskName. Store it for checking
 							//An identifier in an array must be a taskName
 							tasks[id].push(new Result(tk.lexeme, true));
 							undefinedTasks.push(tk.lexeme);
 						}
 				case HrToken.value:
 						if(inArray == 0){
-							if(section == 0){ //It is a variable
+							if(section == ConfigSection.variables){ //It is a variable
 								if(variables.exists(id)){
 									logError('The variable ${id} already exists!');
 								}
 								else 
 									variables.set(id, tk.lexeme);
 							}
-							else if(section == 1) { //must be a task
+							else if(section == ConfigSection.tasks) { //must be a task
 								if(tasks.exists(id)){
 									logError('The task ${id} already exists!');
 								}
-								else 
-									tasks.set(id, [new Result(tk.lexeme, false)]);
+								else if(parameterizedTasks.exists(id)){
+									logError('The parameterized task ${id} already exists!');
+								}
+								else {
+									if(parameterArray != null){
+										if(inParameterList){
+											logError("Expected ')'", tk);
+											parameterArray = null;
+										}
+										else{
+											var pTask = new ParameterizedTask(id, tk.lexeme, parameterArray);
+											//trace('Found parameterized Task: ${pTask.toString()}');
+											parameterArray = null;
+											parameterizedTasks.set(id, pTask);
+											// trace('call: ${pTask.call(["input.file", "tak.out"])}');
+										}
+									}
+									else{
+										//trace('task found: ${id}');
+										tasks.set(id, [new Result(tk.lexeme, false)]);
+									}
+								}
 							}
 							else{
-								logError("Invalid section #");
+								logError("Invalid section type!");
 							}
 						}
 						else{
@@ -643,9 +755,18 @@ class HrParser {
 					}
 				inArray++;
 				case HrToken.rightBracket: inArray--;
+				case HrToken.leftParen:  if(previous().type == HrToken.identifier) inParameterList = true; parameterArray = new Array<String>();
+				case HrToken.rightParen: inParameterList = false;
+				// case HrToken.comma: 
 				default:
 			}
+			tkIndex++;
 		}
+
+		if(inParameterList){
+			logError("Expected ')'", previous());
+		}
+
 
 		//Now that we've parsed the tree, check and see if all our tasks are defined
 		var status:Bool = true;
@@ -663,6 +784,8 @@ class HrParser {
 	 	if(taskName == null || taskName == "") return;
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
+
+		//Go through all the sequences in this task
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
 			Expand(taskSequence[i], variables);
@@ -671,16 +794,88 @@ class HrParser {
 
 	public function ExpandVariablesWithinVariable(variableName:String){
 		if(variableName == null || variableName == "" || !variables.exists(variableName) ) return;
-		var value:String = variables[variableName];
-		variables[variableName] = varRegex.map(value, function(reg:EReg){
-			var varName = reg.matched(1);
-			if(variables.exists(varName)){
-				return variables[varName];
+		variables[variableName] = varRegex.map(variables[variableName], function(reg:EReg){
+			var vname = reg.matched(1);
+			if(variables.exists(vname)){
+				return variables[vname];
 			}
 			else
-				return variableName;
+				return variables[variableName];
 		});
-		trace('Variable:$variableName => $value => ${variables[variableName]}');
+		//trace('Variable:$variableName => $value => ${variables[variableName]}');
+	}
+
+	public function ExpandVariablesWithinParameterizedTask(parametrizedTask:ParameterizedTask){
+		if(parametrizedTask == null ) return;
+		parametrizedTask.text = varRegex.map(parametrizedTask.text, function(reg:EReg){
+			var variableName = reg.matched(1);
+			if(variables.exists(variableName)){
+				return variables[variableName];
+			}
+			else
+				return parametrizedTask.text;
+		});
+		//  trace('Task:${parametrizedTask.name} => ${parametrizedTask.text} ');
+	}
+
+
+	public function ExpandParameterizedTasksWithinTask(taskName:String){
+	 	if(taskName == null || taskName == "") return;
+		var taskSequence = tasks.get(taskName);
+		if(taskSequence == null) return;
+
+		for(i in 0 ... taskSequence.length){
+			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
+			taskSequence[i].text = paramTaskRegex.map(taskSequence[i].text, function(reg:EReg){
+				var ptaskName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
+				var paramGlob = reg.matched(1).substr(ptaskName.length + 1);
+				paramGlob = paramGlob.substr(0, paramGlob.length -1);
+				paramGlob = paramGlob.trim();
+
+				// trace('ptaskName: ${ptaskName} other: ${paramGlob}');
+				//trace('full: ${ptaskName}(${reg.matched(2)})');
+
+				if(parameterizedTasks.exists(ptaskName)){
+					//See if there are any parameters
+					var params:Array<String> = paramGlob.split(",");
+					for(i in 0 ... params.length){
+						params[i] = params[i].trim();
+					}
+
+					var ptask = parameterizedTasks[ptaskName];
+					var output:String = ptask.call(params);
+
+					//TODO: Make sure the correct number of parameters are given
+					// if(ptask.NumParams != params.length) 
+					return output;
+				}
+				else{
+					// trace('parameterized task: $ptaskName was not found!');
+					return taskSequence[i].text;
+				}
+			});
+
+			// trace('newText: ${taskSequence[i].text}');
+		}
+	}
+
+	public function Expand(res:Result, replacements:Map<String,String>){
+		if(res == null || res.isTaskRef || replacements == null) return;
+
+		res.text = varRegex.map(res.text, function(reg:EReg){
+			var variableName = reg.matched(1);
+			// trace('Expand found:${variableName} from @$res');
+			for(key in replacements.keys()){
+				// trace('replacement: [$key] var:[$variableName]');
+				if(variableName == key){
+					// trace('replacement: |${replacements[key]}|');
+					return replacements[key];
+				}
+			}
+			 trace('Expand was unable to find replacement for:${variableName}');
+			return res.text;
+		});
+		// trace('body: ${res.text}');
 	}
 
 	//Gets any task references embedded in this command
@@ -702,23 +897,6 @@ class HrParser {
 			if(deps.length > 0) return deps;
 			else return null;
 		}
-	}
-
-	public function Expand(res:Result, replacements:Map<String,String>){
-		if(res == null || res.isTaskRef || replacements == null) return;
-
-		res.text = varRegex.map(res.text, function(reg:EReg){
-			var variableName = reg.matched(1);
-			// trace('Expand found:${variableName} from @$res');
-			for(key in replacements.keys()){
-				if(variableName == key){
-					// trace('replacement: |${replacements[key]}|');
-					return replacements[key];
-				}
-			}
-			 trace('Expand was unable to find replacement for:${variableName}');
-			return reg.matched(1);
-		});
 	}
 
 	public function toString():String{
@@ -758,7 +936,7 @@ class HrTokenizer{
 	public var wasError(default, null):Bool;
 	//Gets the previous token type if there was one
 	var prevTokenType(get,null):HrToken;
-	function get_prevTokenType():HrToken { if(tokens.length == 0) return HrToken.none; else return tokens[tokens.length - 1].type;}
+	function get_prevTokenType():HrToken { return tokens.length - 1 >= 0 ? tokens[tokens.length - 1].type : HrToken.none;}
 
 	//Gets the current lexeme length
 	var lexemeLength(get,null):Int;
@@ -795,6 +973,14 @@ class HrTokenizer{
 		//Now grab the tokens from the file
 		getTokens();
 
+		return tokens;
+	}
+
+	public function parseText(text:String):Array<Token>{
+		Reset();
+		if(text == null || text == "") return null;
+		content = text;
+		getTokens();
 		return tokens;
 	}
 
@@ -837,6 +1023,8 @@ class HrTokenizer{
 			switch(c){
 				case '#'.code : matchUntil(LINE_BREAKS); //it's a comment
 				case '['.code : arrayLevel++; addToken(HrToken.leftBracket);
+				case '('.code : addToken(HrToken.leftParen);
+				case ')'.code : addToken(HrToken.rightParen);
 				case ']'.code : 
 					arrayLevel--; 
 					if(arrayLevel < 0){ //Unmatched ']'?
@@ -849,7 +1037,7 @@ class HrTokenizer{
 				case '='.code :
 					if(prevTokenType == HrToken.variableSection || prevTokenType == HrToken.taskSection)
 						logError("section headings not allowed on the left side of an ="); 
-					else if(prevTokenType != HrToken.identifier)
+					else if(prevTokenType != HrToken.identifier  && prevTokenType != HrToken.rightParen)
 						logError("Identifier expected before ="); 
 					addToken(HrToken.equals);
 				// case ':'.code : addToken(HrToken.colon);
