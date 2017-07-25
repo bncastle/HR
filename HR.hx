@@ -10,8 +10,8 @@ using StringTools;
 //without needing a build.hxml or command line options. Hix can be found here:
 //https://github.com/bncastle/hix
 //
-//::hix -main HR --no-traces -dce full -cpp bin
-//::hix:debug -main HR -cpp bin
+//::hix -main HR -cpp bin --no-traces -dce full
+//::hix:debug -main HR -cpp bin -dce full
 
 //c++ stuff
 typedef VoidPointer = cpp.RawPointer<cpp.Void>;
@@ -716,7 +716,7 @@ class HrParser {
 					return replacements[key];
 				}
 			}
-			// trace('Expand was unable to find replacement for:${variableName}');
+			 trace('Expand was unable to find replacement for:${variableName}');
 			return reg.matched(1);
 		});
 	}
