@@ -818,7 +818,6 @@ class HrParser {
 		//  trace('Task:${parametrizedTask.name} => ${parametrizedTask.text} ');
 	}
 
-
 	public function ExpandParameterizedTasksWithinTask(taskName:String){
 	 	if(taskName == null || taskName == "") return;
 		var taskSequence = tasks.get(taskName);
@@ -826,7 +825,8 @@ class HrParser {
 
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
-			taskSequence[i].text = paramTaskRegex.map(taskSequence[i].text, function(reg:EReg){
+			taskSequence[i].text = paramTaskRegex.map(taskSequence[i].text, 
+			function (reg:EReg){
 				var ptaskName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
 				var paramGlob = reg.matched(1).substr(ptaskName.length + 1);
 				paramGlob = paramGlob.substr(0, paramGlob.length -1);
@@ -851,11 +851,10 @@ class HrParser {
 				}
 				else{
 					// trace('parameterized task: $ptaskName was not found!');
-					return taskSequence[i].text;
+					return reg.matched(0);
 				}
 			});
-
-			// trace('newText: ${taskSequence[i].text}');
+			//trace('X:${taskSequence[i].text}');
 		}
 	}
 
