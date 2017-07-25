@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.60";
+	static inline var VERSION = "0.61";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -349,7 +349,6 @@ class HR
 						}
 					}
 				}
-
 				//Expand out any task results that need to be expanded for this command
 				// trace('Expand for ${tasks[i]}');
 				parser.Expand(tasks[i], taskResults);
@@ -544,7 +543,7 @@ class HrParser {
 	//This is what a variable looks like in the value field
 	// static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
 	//A variable is @variable
-	static var repl:EReg = ~/@([A-Za-z0-9_]+)/gi;
+	static var varRegex:EReg = ~/@([A-Za-z0-9_]+)/gi;
 
 	//Maps the variables to their values
 	var variables:Map<String,String>;
@@ -568,8 +567,11 @@ class HrParser {
 		var parser = new HrParser();
 		if(parser.Parse(tokens)) {
 			//Expand out all the variable references in the tasks' commands
+			for (v in parser.variables.keys()){
+				parser.ExpandVariablesWithinVariable(v);
+			}
 			for(task in parser.tasks.keys()){
-				parser.ExpandVariables(task);
+				parser.ExpandVariablesWithinTask(task);
 			}
 			return parser;
 		}
@@ -653,13 +655,12 @@ class HrParser {
 				status = false;
 			}
 		}
-
 		return status;
 	}
 
 	//Expand all variables found within a tasks results
-	public function ExpandVariables(taskName:String){
-	 	if(taskName == null) return;
+	public function ExpandVariablesWithinTask(taskName:String){
+	 	if(taskName == null || taskName == "") return;
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
 		for(i in 0 ... taskSequence.length){
@@ -668,12 +669,26 @@ class HrParser {
 		}
 	}
 
+	public function ExpandVariablesWithinVariable(variableName:String){
+		if(variableName == null || variableName == "" || !variables.exists(variableName) ) return;
+		var value:String = variables[variableName];
+		variables[variableName] = varRegex.map(value, function(reg:EReg){
+			var varName = reg.matched(1);
+			if(variables.exists(varName)){
+				return variables[varName];
+			}
+			else
+				return variableName;
+		});
+		trace('Variable:$variableName => $value => ${variables[variableName]}');
+	}
+
 	//Gets any task references embedded in this command
 	public function GetEmbeddedTaskReferences(cmd:Result):Array<String>{
 		if(cmd == null || cmd.isTaskRef) return null;
 		else{
 			var deps:Array<String> = [];
-			repl.map(cmd.text, function(reg:EReg){
+			varRegex.map(cmd.text, function(reg:EReg){
 				var variableName = reg.matched(1);
 				for(key in variables.keys()){
 					if(variableName == key){ return "";}
@@ -692,9 +707,9 @@ class HrParser {
 	public function Expand(res:Result, replacements:Map<String,String>){
 		if(res == null || res.isTaskRef || replacements == null) return;
 
-		res.text = repl.map(res.text, function(reg:EReg){
+		res.text = varRegex.map(res.text, function(reg:EReg){
 			var variableName = reg.matched(1);
-			// trace('Expand found:${variableName} from |$res|');
+			// trace('Expand found:${variableName} from @$res');
 			for(key in replacements.keys()){
 				if(variableName == key){
 					// trace('replacement: |${replacements[key]}|');
