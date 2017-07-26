@@ -1,9 +1,9 @@
 #This is an HR file for building the HR executable
-variables
+--variables
     UPX = c:\utils\upx.exe -9
     DestDir = C:\utils
     ExeName= hr.exe
-tasks 
+--tasks 
     build = haxe build.hxml
     pack = @UPX @DestDir\Hr.exe
     delete = if exist @DestDir\@ExeName.old del @DestDir\@ExeName.old

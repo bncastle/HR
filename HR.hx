@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.63";
+	static inline var VERSION = "0.64";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -512,14 +512,14 @@ enum HrToken{
 	//Single-character tokens
     leftBracket; rightBracket; equals; comma; leftParen; rightParen;
 	//Keywords
-	variableSection; taskSection;
+	variableSection; taskSection; templateSection;
 	//DataTypes
 	identifier; value;
 	//other
-	none; eof;
+	none; eof; double_dash;
 }
 
-enum ConfigSection{ none; variables; tasks;}
+enum ConfigSection{ none; variables; tasks; templates;}
 
 class Token{
 	public var type(default,null):HrToken;
@@ -539,7 +539,7 @@ class Token{
 	}
 }
 
-class ParameterizedTask{
+class Template{
 	public var name(default, null):String;
 	public var text:String;
 	public var parameters:Array<String>;
@@ -609,8 +609,7 @@ class HrParser {
 	//Maps the task name to its command
 	public var tasks(default,null):Map<String,Array<Result>>;
 
-	public var parameterizedTasks(default, null): Map<String, ParameterizedTask>;
-	var pTaskTokenizer:HrTokenizer;
+	public var templates(default, null): Map<String, Template>;
 
 	//Contains any tasks that are as of yet undefined
 	var undefinedTasks:Array<String>;
@@ -620,24 +619,23 @@ class HrParser {
 	private function new(){
 		variables = new Map<String,String>();
 		tasks = new Map<String,Array<Result>>();
-		parameterizedTasks = new Map<String, ParameterizedTask>();
+		templates = new Map<String, Template>();
 		undefinedTasks = new Array<String>();
-		pTaskTokenizer= new HrTokenizer();
 		wasError = false;
 	}
 
 	public static function ParseTokens(tokens:Array<Token>):HrParser{
 		var parser = new HrParser();
-		if(parser.Parse(tokens)) {
+		if(parser.Parse(tokens) && !parser.wasError) {
 			//Expand out all the variable references in the tasks' commands
 			for (v in parser.variables.keys()){
 				parser.ExpandVariablesWithinVariable(v);
 			}
-			for(pt in parser.parameterizedTasks){
-				parser.ExpandVariablesWithinParameterizedTask(pt);
+			for(pt in parser.templates){
+				parser.ExpandVariablesWithinTemplate(pt);
 			}
 			for(task in parser.tasks.keys()){
-				parser.ExpandParameterizedTasksWithinTask(task);
+				parser.ExpandTemplatesWithinTask(task);
 				parser.ExpandVariablesWithinTask(task);
 			}
 			return parser;
@@ -668,26 +666,30 @@ class HrParser {
 		var tkIndex = 0;
 
 		var current = function():Token { return tkIndex < tokens.length ? tokens[tkIndex] : null;}
-		var exists = function(type: HrToken, startIndex:Int = 0):Bool { 
-			startIndex = cast Math.min(Math.max(0, startIndex), tokens.length - 1); 
-			for(i in startIndex...tokens.length) if(tokens[i].type == type) return true;
-			return false;
-			}
+		// var exists = function(type: HrToken, startIndex:Int = 0):Bool { 
+		// 	startIndex = cast Math.min(Math.max(0, startIndex), tokens.length - 1); 
+		// 	for(i in startIndex...tokens.length) if(tokens[i].type == type) return true;
+		// 	return false;
+		// 	}
 		var previous = function():Token { return tkIndex - 1 >= 0 ? tokens[tkIndex - 1] : null;}
-		var next = function():Token { return tkIndex + 1 < tokens.length ? tokens[tkIndex + 1] : null;}
+		// var next = function():Token { return tkIndex + 1 < tokens.length ? tokens[tkIndex + 1] : null;}
 		
 		var inParameterList:Bool = false;	
 		var parameterArray:Array<String> = null;
 
-		while(current() != null){
+		//Parse all the tokens but stop on the 1st error we encounter
+		//Note: I might change this back to allow complete parsing even with errors
+		while(current() != null && !wasError){
 			var tk = current();
 			switch(tk.type){
 				case HrToken.variableSection:
 					section = ConfigSection.variables;
 				case HrToken.taskSection:
 					section = ConfigSection.tasks;
+				case HrToken.templateSection:
+					section = ConfigSection.templates;
 				case HrToken.identifier:
-						if(inArray == 0){
+						if(section == ConfigSection.templates){
 							if(!inParameterList){
 								id = tk.lexeme;
 							}
@@ -695,27 +697,38 @@ class HrParser {
 								parameterArray.push(tk.lexeme);
 							}
 						}
-						else {
-							//We're in an array and this is a taskName. Store it for checking
-							//An identifier in an array must be a taskName
-							tasks[id].push(new Result(tk.lexeme, true));
-							undefinedTasks.push(tk.lexeme);
+						else{
+							if(inArray == 0){
+									id = tk.lexeme;
+							}
+							else {
+								//We're in an array and this is a taskName. Store it for checking
+								//An identifier in an array must be a taskName
+								tasks[id].push(new Result(tk.lexeme, true));
+								undefinedTasks.push(tk.lexeme);
+							}
 						}
 				case HrToken.value:
 						if(inArray == 0){
 							if(section == ConfigSection.variables){ //It is a variable
 								if(variables.exists(id)){
-									logError('The variable ${id} already exists!');
+									logError('The variable "${id}" already exists!');
 								}
 								else 
 									variables.set(id, tk.lexeme);
 							}
 							else if(section == ConfigSection.tasks) { //must be a task
 								if(tasks.exists(id)){
-									logError('The task ${id} already exists!');
+									logError('The task "${id}" already exists!');
 								}
-								else if(parameterizedTasks.exists(id)){
-									logError('The parameterized task ${id} already exists!');
+								else{
+									//trace('task found: ${id}');
+									tasks.set(id, [new Result(tk.lexeme, false)]);
+								}
+							}
+							else if(section == ConfigSection.templates) { //In the templates section?
+								if(templates.exists(id)){
+									logError('The template "${id}" already exists!');
 								}
 								else {
 									if(parameterArray != null){
@@ -724,16 +737,12 @@ class HrParser {
 											parameterArray = null;
 										}
 										else{
-											var pTask = new ParameterizedTask(id, tk.lexeme, parameterArray);
-											//trace('Found parameterized Task: ${pTask.toString()}');
+											var tmp = new Template(id, tk.lexeme, parameterArray);
+											//trace('Found template: ${tmp.toString()}');
 											parameterArray = null;
-											parameterizedTasks.set(id, pTask);
-											// trace('call: ${pTask.call(["input.file", "tak.out"])}');
+											templates.set(id, tmp);
+											// trace('call: ${tmp.call(["input.file", "tak.out"])}');
 										}
-									}
-									else{
-										//trace('task found: ${id}');
-										tasks.set(id, [new Result(tk.lexeme, false)]);
 									}
 								}
 							}
@@ -748,14 +757,26 @@ class HrParser {
 				case HrToken.leftBracket:
 					//If we enter an array, make sure the task doesn't yet exist
 					if(tasks.exists(id)){
-						logError('The task ${id} already exists!', tk);
+						logError('The task "${id}" already exists!', tk);
 					}
 					else{ //create an empty array and set its id
 						tasks.set(id,[]);
 					}
 				inArray++;
 				case HrToken.rightBracket: inArray--;
-				case HrToken.leftParen:  if(previous().type == HrToken.identifier) inParameterList = true; parameterArray = new Array<String>();
+				case HrToken.leftParen:
+				if(section == ConfigSection.templates){
+					if(previous().type == HrToken.identifier) {
+						inParameterList = true; 
+						parameterArray = new Array<String>();
+					}
+				}
+				else{
+					if(previous().type == HrToken.identifier)
+						logError('Unexpected template declaration ${previous().lexeme}(. Template declarations should go in the templates section!',tk);
+					else
+						logError('Unexpected "("', tk);
+				}
 				case HrToken.rightParen: inParameterList = false;
 				// case HrToken.comma: 
 				default:
@@ -763,7 +784,7 @@ class HrParser {
 			tkIndex++;
 		}
 
-		if(inParameterList){
+		if(section == ConfigSection.templates && inParameterList){
 			logError("Expected ')'", previous());
 		}
 
@@ -805,7 +826,7 @@ class HrParser {
 		//trace('Variable:$variableName => $value => ${variables[variableName]}');
 	}
 
-	public function ExpandVariablesWithinParameterizedTask(parametrizedTask:ParameterizedTask){
+	public function ExpandVariablesWithinTemplate(parametrizedTask:Template){
 		if(parametrizedTask == null ) return;
 		parametrizedTask.text = varRegex.map(parametrizedTask.text, function(reg:EReg){
 			var variableName = reg.matched(1);
@@ -818,7 +839,7 @@ class HrParser {
 		//  trace('Task:${parametrizedTask.name} => ${parametrizedTask.text} ');
 	}
 
-	public function ExpandParameterizedTasksWithinTask(taskName:String){
+	public function ExpandTemplatesWithinTask(taskName:String){
 	 	if(taskName == null || taskName == "") return;
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
@@ -827,34 +848,34 @@ class HrParser {
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
 			taskSequence[i].text = paramTaskRegex.map(taskSequence[i].text, 
 			function (reg:EReg){
-				var ptaskName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
-				var paramGlob = reg.matched(1).substr(ptaskName.length + 1);
+				var templateName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
+				var paramGlob = reg.matched(1).substr(templateName.length + 1);
 				paramGlob = paramGlob.substr(0, paramGlob.length -1);
 				paramGlob = paramGlob.trim();
 
-				// trace('ptaskName: ${ptaskName} other: ${paramGlob}');
-				//trace('full: ${ptaskName}(${reg.matched(2)})');
+				// trace('templateName: ${templateName} other: ${paramGlob}');
+				//trace('full: ${templateName}(${reg.matched(2)})');
 
-				if(parameterizedTasks.exists(ptaskName)){
+				if(templates.exists(templateName)){
 					//See if there are any parameters
 					var params:Array<String> = paramGlob.split(",");
 					for(i in 0 ... params.length){
 						params[i] = params[i].trim();
 					}
 
-					var ptask = parameterizedTasks[ptaskName];
-					var output:String = ptask.call(params);
+					var tmpl = templates[templateName];
+					var output:String = tmpl.call(params);
 
 					//TODO: Make sure the correct number of parameters are given
-					// if(ptask.NumParams != params.length) 
+					// if(tmpl.NumParams != params.length) 
 					return output;
 				}
 				else{
-					// trace('parameterized task: $ptaskName was not found!');
+					logError('Template: $templateName was not found!');
 					return reg.matched(0);
 				}
 			});
-			//trace('X:${taskSequence[i].text}');
+			//trace('=>:${taskSequence[i].text}');
 		}
 	}
 
@@ -871,7 +892,7 @@ class HrParser {
 					return replacements[key];
 				}
 			}
-			 trace('Expand was unable to find replacement for:${variableName}');
+			logError('Unable to find a variable named: ${variableName}');
 			return res.text;
 		});
 		// trace('body: ${res.text}');
@@ -918,7 +939,7 @@ class HrParser {
 class HrTokenizer{
 	static var WHITESPACE:Array<Int> = ["\t".code, " ".code, "\r".code];
 	static var LINE_BREAKS:Array<Int> = ["\n".code, "\r".code];
-	static var KEYWORDS:Map<String,HrToken> = ["variables" => HrToken.variableSection, "tasks" => HrToken.taskSection];
+	static var KEYWORDS:Map<String,HrToken> = ["variables" => HrToken.variableSection, "tasks" => HrToken.taskSection, "templates" => HrToken.templateSection];
 
 	var content:String;
 	var tokens:Array<Token>;
@@ -1013,6 +1034,9 @@ class HrTokenizer{
 		//  trace('Add ${t} |${lexeme}|');
 		tokens.push(new Token(t, line, col - lexemeLength, lexeme));
 	}
+	function removeLastToken(){
+		tokens.pop();
+	}
 
 	function getTokens(){
 		while(!isEof()){
@@ -1041,6 +1065,15 @@ class HrTokenizer{
 					addToken(HrToken.equals);
 				// case ':'.code : addToken(HrToken.colon);
 				case ','.code : addToken(HrToken.comma);
+				case '-'.code :
+					//the double-dash must be at the very beginning
+					if(peek() == '-'.code && col == 2){
+						nextChar();
+						addToken(HrToken.double_dash);
+					}
+					// else{
+					// 	logError("Unexpected '-'");
+					// }
 				case '\n'.code : start = index; line++; col = 1; if(prevTokenType == HrToken.equals) logError("value required after equals", tokens[tokens.length -1]);
 				default:
 					//We expect a value after an '='
@@ -1082,7 +1115,13 @@ class HrTokenizer{
 							//is it a keyword?
 							var t = KEYWORDS.get(lexeme);
 							if(t != null){
-								addToken(t);
+								if(prevTokenType == HrToken.double_dash){
+									//Remove the double dash as the parser does not need it
+									removeLastToken();
+									addToken(t);
+								}
+								else
+									logError('Is "$lexeme" a section header? If so, it must be:--$lexeme');
 							}
 							else{ //It must be an identifier
 								//Was there another identifier before this one? That isn't allowed

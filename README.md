@@ -14,21 +14,23 @@ If it can't find config.hr, then it looks for any file within the directory with
 task is a key=value pair where the key identifies the task by name and the value is the command to be executed.
 A task key also supports an array of task where each value is a task name preceeded by a `:` (see below example).
 An optional variables section as shown below can be used to allow for more flexibility. To refer to a variable in a task,
-it must be enclosed in `|@variableName|` where `variableName` is the name of the variable defined in the variables section
+use a '@' before the variable name. ex: `@variableName` where `variableName` is the name of the variable defined in the variables section
 to which you want to refer (see below for examples). The output of tasks can also be used within the command of other
 tasks by enclosing the name of the task in the same manner (examples are shown in the example below). Variable names and task names
-are restricted to: 'A-Z', 'a-z' and '_'.
+are restricted to: 'A-Z', 'a-z' and '_'. A templates section as shown below can be used to implement a template that takes text as input
+and replaces the text in its template with the input text. Note the parameter names are refered to with a '$' preceding it. This tells the compiler that 
+we want whatever the user entered for that parameter to be replaced there.
 An example `config.hr` file is shown below:
 
 ```php
     #comments look like this and are allowed outside sections, and between tasks and variables
     #There are two specific sections that are allowed in a config.hr file: variables and tasks
     #The variables section is optional and does not need to be defined if it is not needed
-    variables
+    --variables
         #This sets the name of our zip file
         zipName = TestPackage
 
-    tasks
+    --tasks
         #Delete the zip file package if it exists
         deleteZip= if exist "|@zipName|.zip" (del @zipName|.zip)
         #Get the file version of the main .exe so we can add it to the end of the zipfile name
@@ -38,7 +40,8 @@ An example `config.hr` file is shown below:
         zip = 7za.exe a -tzip |@zipName|_|@fileVersion|.zip README.txt Version.txt bin\Release\MyUtil.exe
         #Below is a task that runs several other tasks (note the task neames must all be preceeded by ':')
         buildZip = [:deleteZip, :zip]
-
+    --templates
+        copy(dir) = copy test.zip $dir/test.zip
 
 ```
 
