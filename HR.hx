@@ -19,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.64";
+	static inline var VERSION = "0.65";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -1043,6 +1043,14 @@ class HrTokenizer{
 			eat(WHITESPACE);
 			start = index;
 			var c:Int = nextChar();
+
+			//the double-dash must be at the very beginning
+			if(c == '-'.code && peek() == '-'.code && col == 2){
+				nextChar();
+				addToken(HrToken.double_dash);
+				continue;
+			}
+
 			switch(c){
 				case '#'.code : matchUntil(LINE_BREAKS); //it's a comment
 				case '['.code : arrayLevel++; addToken(HrToken.leftBracket);
@@ -1065,15 +1073,6 @@ class HrTokenizer{
 					addToken(HrToken.equals);
 				// case ':'.code : addToken(HrToken.colon);
 				case ','.code : addToken(HrToken.comma);
-				case '-'.code :
-					//the double-dash must be at the very beginning
-					if(peek() == '-'.code && col == 2){
-						nextChar();
-						addToken(HrToken.double_dash);
-					}
-					// else{
-					// 	logError("Unexpected '-'");
-					// }
 				case '\n'.code : start = index; line++; col = 1; if(prevTokenType == HrToken.equals) logError("value required after equals", tokens[tokens.length -1]);
 				default:
 					//We expect a value after an '='
