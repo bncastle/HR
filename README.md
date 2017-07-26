@@ -1,5 +1,7 @@
 # HR
-A simple task runner written in Haxe
+A simple task runner written in Haxe.
+
+A [VSCode extension](https://github.com/bncastle/hr-language-vscode-ext) is also available for coloring .hr files.
 
 ## Building
 
@@ -17,9 +19,8 @@ An optional variables section as shown below can be used to allow for more flexi
 use a '@' before the variable name. ex: `@variableName` where `variableName` is the name of the variable defined in the variables section
 to which you want to refer (see below for examples). The output of tasks can also be used within the command of other
 tasks by enclosing the name of the task in the same manner (examples are shown in the example below). Variable names and task names
-are restricted to: 'A-Z', 'a-z' and '_'. A templates section as shown below can be used to implement a template that takes text as input
-and replaces the text in its template with the input text. Note the parameter names are refered to with a '$' preceding it. This tells the compiler that 
-we want whatever the user entered for that parameter to be replaced there.
+are restricted to: 'A-Z', 'a-z' and '_'. A templates section as shown below can be used to implement a template that takes text parameters as input
+and replaces their references with the text entered by the user. Note the parameter names are refered to with a '$' preceding it. Templates can be called from tasks by preceeding them with '_' (this is subject to change). To call a template named copy(dir), you would use _copy(C:\yourDirHere)
 An example `config.hr` file is shown below:
 
 ```php
@@ -40,6 +41,7 @@ An example `config.hr` file is shown below:
         zip = 7za.exe a -tzip |@zipName|_|@fileVersion|.zip README.txt Version.txt bin\Release\MyUtil.exe
         #Below is a task that runs several other tasks (note the task neames must all be preceeded by ':')
         buildZip = [:deleteZip, :zip]
+        copytest = _copy(c:\utils\test)
     --templates
         copy(dir) = copy test.zip $dir/test.zip
 
