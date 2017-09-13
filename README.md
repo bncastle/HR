@@ -47,6 +47,49 @@ An example `config.hr` file is shown below:
 
 ```
 
+## Command line arguments
+
+HR also allows placing requirements for a command line argument within a variable or a task. The syntax for doing so looks like:
+
+`@1 `
+
+The number indicates which command line argument to grab. Note that the cmd line arguments start at 1 so
+@1 looks for the 1st cmd line argument given AFTER the task name. An example task:
+
+`print_name = echo hello @1!`
+
+When executed, this task will expect a single command line argument. If it does not find one, it will print an error explaining what it was looking for and exit. To call this task correctly, you would type:
+
+`hr.exe print_name Jeff`
+
+This would then produce the output:
+
+`hello Jeff!`
+
+Default command line args can also be provided:
+
+`print_name = echo hello @1[Judy]!`
+
+The default value of "Judy" is now inserted if there is not an argument available.
+
+`hr.exe print_name`
+
+This would then produce the output:
+
+`hello Judy!`
+
+In addition, you can specify that the argument is optional by providing empty brackets:
+
+`print_name = echo hello @1[]!`
+
+Running the above with no argument would then produce the output:
+
+`hello !`
+
+Note that there are possible issues when using cmd line argument references in tasks that refer to each other, so be careful!
+
+## Building HR
+
 To run the "buildZip" task, you type:
 
 `HR buildZip`

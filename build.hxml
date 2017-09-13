@@ -1,3 +1,6 @@
+#https://haxe.org/manual/compiler-usage.html
+#the -cp sets the class path that points to where the source files can be found
+-cp src
 -main HR 
 -cpp bin
 --no-traces
