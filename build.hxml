@@ -6,8 +6,4 @@
 --no-traces
 -dce full
 # -D HXCPP_VERBOSE=1
-#note: I've modified:
-#C:\Users\<username>\haxelib\hxcpp\3,4,64\include\hx\Tls.h
-# so that this will compile with VS2017 with the current version of Haxe (3.4.2)
-# and HXCPP (3.4.64)
-#Also had to add HXCPP_MSVC to my Environment variables
+#note: had to add HXCPP_MSVC to my Environment variables

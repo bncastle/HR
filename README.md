@@ -12,14 +12,20 @@ The .exe will be found in `bin` directory.
 ## Usage
 
 HR looks for a special `config.hr` file located in the root of the directory where you want to run tasks.
-If it can't find config.hr, then it looks for any file within the directory with a .hr extension. Each
-task is a key=value pair where the key identifies the task by name and the value is the command to be executed.
+If it can't find config.hr, then it looks for any file within the directory with a .hr extension. 
+
+Each task is a key=value pair where the key identifies the task by name and the value is the command to be executed.
 A task key also supports an array of task where each value is a task name preceeded by a `:` (see below example).
+
 An optional variables section as shown below can be used to allow for more flexibility. To refer to a variable in a task,
 use a '@' before the variable name. ex: `@variableName` where `variableName` is the name of the variable defined in the variables section
-to which you want to refer (see below for examples). The output of tasks can also be used within the command of other
+to which you want to refer (see below for examples). 
+
+The output of tasks can also be used within the command of other
 tasks by enclosing the name of the task in the same manner (examples are shown in the example below). Variable names and task names
-are restricted to: 'A-Z', 'a-z' and '_'. A templates section as shown below can be used to implement a template that takes text parameters as input
+are restricted to: 'A-Z', 'a-z' and '_'. 
+
+A templates section as shown below can be used to implement a template that takes text parameters as input
 and replaces their references with the text entered by the user. Note the parameter names are refered to with a '$' preceding it. Templates can be called from tasks by preceeding them with '_' (this is subject to change). To call a template named copy(dir), you would use _copy(C:\yourDirHere)
 An example `config.hr` file is shown below:
 
@@ -33,12 +39,12 @@ An example `config.hr` file is shown below:
 
     --tasks
         #Delete the zip file package if it exists
-        deleteZip= if exist "|@zipName|.zip" (del @zipName|.zip)
+        deleteZip= if exist "@zipName.zip" (del @zipName.zip)
         #Get the file version of the main .exe so we can add it to the end of the zipfile name
         #assuming of course that MyUtil.exe is a .NET executable
         fileVersion = powershell (Get-Item bin\Release\MyUtil.exe).VersionInfo.FileVersion
         #Use 7za.exe to archive the package (note the reference to the fileVersion task)
-        zip = 7za.exe a -tzip |@zipName|_|@fileVersion|.zip README.txt Version.txt bin\Release\MyUtil.exe
+        zip = 7za.exe a -tzip @zipName_@fileVersion.zip README.txt Version.txt bin\Release\MyUtil.exe
         #Below is a task that runs several other tasks (note the task neames must all be preceeded by ':')
         buildZip = [:deleteZip, :zip]
         copytest = _copy(c:\utils\test)
