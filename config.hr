@@ -5,10 +5,12 @@
     ExeName= hr.exe
 --tasks 
     build = haxe build.hxml
-    pack = @UPX @DestDir\Hr.exe
-    delete = if exist @DestDir\@ExeName.old del @DestDir\@ExeName.old
-    rename = ren @DestDir\@ExeName @ExeName.old
-    deploy = copy /Y .\bin\@ExeName @DestDir
-    buildDeploy = [:build, :delete, :rename, :deploy :pack]
-    bpd = [:build, :pack, :deploy]
-    pd = [:pack,:deploy]
+    build_dbg = haxe -cp src -main HR -cpp bin -dce full
+    _pack = :UPX: :DestDir:\Hr.exe
+    _deploy = [
+        if exist :DestDir:\:ExeName:.old del :DestDir:\:ExeName:.old
+        if exist :DestDir:\:ExeName: ren :DestDir:\:ExeName: :ExeName:.old
+        copy /Y .\bin\:ExeName: :DestDir:
+    ]
+    buildDeploy = [:build, :_deploy :_pack]
+    buildDeployDbg = [:build_dbg, :_deploy :_pack]

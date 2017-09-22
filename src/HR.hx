@@ -18,7 +18,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.66";
+	static inline var VERSION = "0.67";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -63,6 +63,9 @@ class HR
 			//Note: We want the config file in the directory where we were invoked!
 			cfgFile = HR.findDefaultorFirstConfigFile(Sys.getCwd());
 		}
+
+		if(cfgFile != null)
+			log('Using file: $cfgFile');
 		//Add the full path to the config filename we found
 		cfgFile = Path.join([Sys.getCwd(), cfgFile]);
 
@@ -84,6 +87,7 @@ class HR
 		//Parse the config file
 		if (!h.ParseConfig(cfgFile, args))
 		{
+			error('config file issues\n');
 			return -1;
 		}
 
@@ -123,6 +127,8 @@ class HR
 		retCode = h.checkForIllegalEmbeddedTaskRefs(h.dependencyMap[taskName]);
 		if(retCode != 0) return retCode;
 
+
+		trace('Running task: $taskName\n');
 		retCode = h.RunTask(taskName);
 		if ( retCode != 0)
 			return retCode;
@@ -472,7 +478,11 @@ class HR
 		log('');
 		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}"');
 		for	(taskName in parser.tasks.keys()){
-			log(taskName);
+			//Only show tasks that arent "hidden"
+			//a task beginning with an underscore '_' is hidden
+			//and wont be displayed but it can still be executed
+			if(taskName.charCodeAt(0) != '_'.code)
+				log(taskName);
 		}
 	}
 

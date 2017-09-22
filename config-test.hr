@@ -1,22 +1,22 @@
 #This is a comment
-variables
+--variables
     genGame=build/gen/game.js
     index = file://%cd%/index.html
     zipname = Garanja.zip
 
-tasks
+--tasks
 # Task Order should be: F,B,C,D, racer
     A = [:C,:B,:D,
     racer
     ]
-    B = echo |@F|
-    C = |@B|
+    B = echo :F:
+    C = :B:
     D = [Horsey
     ]
     F = dir
 
     #embedded task ref to G should not be allowed since G has multiple commands
-    G = echo |@H|
+    G = echo :H:
     H = [
     Command1
     Comand2

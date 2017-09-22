@@ -7,9 +7,10 @@ class HRParser {
 	//This is what a variable looks like in the value field
 	// static var repl:EReg = ~/(\|@[A-Za-z0-9_]+\|)/gi;
 	//A variable is @variable
-	static var varRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+)/gi;
+	static var varRegex:EReg = ~/:([A-Za-z_][A-Za-z0-9_]+):/gi;
+	// static var taskVarRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+)/gi;
 	static var taskArgsRegex:EReg = ~/@([0-9]+)(?:\[(.*?)\])?/gi;
-	static var paramTaskRegex:EReg = ~/_([A-Za-z0-9_]+\([^\)]+\))/gi;
+	static var templatesRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+\([^\)]+\))/gi;
 
 	//Maps the variables to their values
 	var variables:Map<String,String>;
@@ -47,13 +48,24 @@ class HRParser {
 
 	function ExpandVariablesAndArgs() {
 		if(wasError) return;
+
 		//Expand out all the variable references in the tasks' commands
+		// trace('HRParser: Expanding variables within variables');
 		for (v in variables.keys()){
 			ExpandVariablesWithinVariable(v);
+			ExpandTaskArgsWithinVariable(v);
 		}
+
+		if(wasError) return;
+
+		// trace('HRParser: Expanding variables within templates');
 		for(pt in templates){
 			ExpandVariablesWithinTemplate(pt);
 		}
+
+		if(wasError) return;
+
+		// trace('HRParser: Expanding templates within task and variables within tasks');
 		for(task in tasks.keys()){
 			ExpandTemplatesWithinTask(task);
 			ExpandVariablesWithinTask(task);
@@ -264,7 +276,7 @@ class HRParser {
 
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
-			taskSequence[i].text = paramTaskRegex.map(taskSequence[i].text, 
+			taskSequence[i].text = templatesRegex.map(taskSequence[i].text, 
 			function (reg:EReg){
 				var templateName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
 				var paramGlob = reg.matched(1).substr(templateName.length + 1);
@@ -297,31 +309,46 @@ class HRParser {
 		}
 	}
 
-	public function Expand(res:Result, replacements:Map<String,String>){
+	public function Expand(res:Result, replacements:Map<String,String>) {
 		if(res == null || res.isTaskRef || replacements == null) return;
-
-		res.text = varRegex.map(res.text, function(reg:EReg){
-			var variableName = reg.matched(1);
-			
-			//It might be a reference to a task argument
-			var argIndex = Std.parseInt(variableName);
-			if(argIndex != null){
-				return res.text;
-			}
-					
-			// trace('Expand found:${variableName} from @$res');
-			for(key in replacements.keys()){
-				// trace('replacement: [$key] var:[$variableName]');
-				if(variableName == key){
-					// trace('replacement: |${replacements[key]}|');
-					return replacements[key];
-				}
-			}
-			logError('Unable to find a variable named: ${variableName}');
-			return res.text;
-		});
-		// trace('body: ${res.text}');
+		// Sys.println('Before:${res.text}');
+		res.text = Replace(res.text, varRegex, replacements);
+		// Sys.println('After:${res.text}');
 	}
+
+	function Replace(text:String, regex:EReg, replacements:Map<String,String>): String {
+		if(replacements == null){
+			trace('replacements Map was empty');
+			return text;
+		}
+		var newString = regex.map(text, function(regex){
+			var varName = regex.matched(1);
+			trace('Repl found variable: $varName');
+			//See if we have any matching variables
+			//If so, replace them with their replacement value
+			//otherwise, return the original text
+			for(key in replacements.keys()){
+				if(key == varName) return replacements[key];
+			}
+			return regex.matched(0);
+		});
+		return newString;
+	}
+
+	//Returns an array of strings containing UNIQUE matches to the regex
+	function GrabUniqueMatches(text:String, regex:EReg): Array<String>{
+		var matches:Array<String> = [];
+		if(text == null || regex == null) return matches;
+
+		regex.map(text, function(re:EReg){
+			var value = re.matched(1);
+			if(matches.lastIndexOf(value) == -1)
+				matches.push(value);
+			return "";
+		});
+		return matches;
+	}
+
 
 	//Expands any command line args found within a task. By the time this is called
 	//all variables should already be expanded and thus all task args should be found
@@ -371,24 +398,18 @@ class HRParser {
 	}
 
 	//Gets any task references embedded in this command
-	public function GetEmbeddedTaskReferences(cmd:Result):Array<String>{
+	public function GetEmbeddedTaskReferences(cmd:Result):Array<String> {
 		if(cmd == null || cmd.isTaskRef) return null;
-		else{
-			var deps:Array<String> = [];
-			varRegex.map(cmd.text, function(reg:EReg){
-				var variableName = reg.matched(1);
-				for(key in variables.keys()){
-					if(variableName == key){ return "";}
-				}
 
-				//Make sure this taskref is not already in the list of deps AND it isnt a variable
-				if(deps.indexOf(variableName) == -1 && !variables.exists(variableName))
-					deps.push(variableName);
-				return "";
-			});
-			if(deps.length > 0) return deps;
-			else return null;
+		var matches = GrabUniqueMatches(cmd.text, varRegex);
+		
+		//Get rid of any variables in this list and all
+		//we should have left is Task references
+		for (key in variables.keys()){
+			if(matches.indexOf(key) != -1)
+				matches.remove(key);
 		}
+		return matches;
 	}
 
 	public function toString():String{

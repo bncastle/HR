@@ -159,6 +159,11 @@ class HrTokenizer{
 									if(t != null){
 										logError("keywords are not allowed here");
 									}
+									else if(peek() == ':'.code) {
+										//We have a variable or task outpur ref so it must be a full command
+										matchUntil(LINE_BREAKS);
+										addToken(HRToken.value);
+									}
 									else{
 										addToken(HRToken.identifier);
 									}
@@ -175,7 +180,7 @@ class HrTokenizer{
 									logError('Expected a full command');
 							}
 					}
-					else if (isAlpha(c)){
+					else if (isAlpha(c) || c == '_'.code){
 						matchIdentifier();
 						if(lexemeLength > 0){
 							//is it a keyword?
