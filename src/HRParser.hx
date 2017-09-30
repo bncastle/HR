@@ -34,6 +34,14 @@ class HRParser {
 		templates = new Map<String, Template>();
 		undefinedTasks = new Array<String>();
 		wasError = false;
+
+		//Special variables that are set by HR and encased between a '_' on each end 
+		var cwd = Sys.getCwd();
+		if(cwd.charAt(cwd.length -1 ) == '/'){
+			cwd = cwd.substr(0, cwd.length - 1);
+			cwd += '\\';
+		}
+		variables.set("_cwd_", cwd);
 	}
 
 	public static function ParseTokens(tokens:Array<Token>, taskArgs:Array<String>):HRParser{
