@@ -41,6 +41,8 @@ class HRParser {
 			cwd = cwd.substr(0, cwd.length - 1);
 			cwd += '\\';
 		}
+
+		///Set any internally-defined variables here:
 		variables.set("_cwd_", cwd);
 	}
 
@@ -150,6 +152,9 @@ class HRParser {
 							if(section == ConfigSection.variables){ //It is a variable
 								if(variables.exists(id)){
 									logError('The variable "${id}" already exists!');
+								}
+								else if(id.indexOf("_") == 0 && id.endsWith("_")){
+									logError('Variable : "${id}" cannot be surrounded by _.');
 								}
 								else 
 									variables.set(id, tk.lexeme);

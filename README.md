@@ -23,7 +23,13 @@ to which you want to refer (see below for examples).
 
 The output of tasks can also be used within the command of other
 tasks by enclosing the name of the task in the same manner (examples are shown in the example below). Variable names and task names
-are restricted to: 'A-Z', 'a-z' and '_'. 
+are restricted to: 'A-Z', 'a-z' and '_'. Variable names cannot be surrounded by '_' (ex: _badName_). Variables with this naming
+convention are reserved for system-defined variables.
+
+There are some system-defined variables that are defined regardless of the hr config file that is being used. These variables can be used in 
+any script. Below are all the currently-defined system variables:
+
+`_cwd_ => outputs the current working directory`
 
 Tasks can be hidden from being listed by beginning their name with an underscore '_'. This will cause them to not appear in the available task listing, but they can still be executed. This provides a way to keep any "internal" tasks from being displayed in the listings.
 
