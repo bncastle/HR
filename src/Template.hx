@@ -7,11 +7,11 @@ class Template{
 	public var NumParams(get, null):Int;
 	function get_NumParams():Int{return parameters.length;}
 
-	public function new(taskName:String, text:String, params:Array<String>){
-		name = taskName;
+	public function new(templateName:String, text:String, params:Array<String>){
+		name = templateName;
 		this.text = text;
-		parameters = new Array<String>();
-		if(params != null && params.length > 0){
+		parameters = [];
+		if(params != null){
 			for(p in params){
 				if(parameters.indexOf(p) == -1)
 					parameters.push(p);
@@ -19,8 +19,17 @@ class Template{
 		}
 	}
 
+	public function check_parameters(inputParams:Array<String>):Bool{
+		if(inputParams == null || parameters.length != inputParams.length) { 
+			Sys.println('Template error: ${name} requires ${parameters.length} parameters but was only passed ${inputParams.length}!'); 
+			return false;
+		}
+		return true;
+	}
+
 	public function call(inputParams:Array<String>):String{
-		if(inputParams == null || parameters.length != inputParams.length) { trace('called: ${name} parameters incorrect!'); return "";}
+		if(!check_parameters(inputParams)) return "";
+
 		var newString:String = this.text;
 		//Parameters are specified in order
 		// static var varRegex:EReg = ~/@([A-Za-z0-9_]+)/gi;

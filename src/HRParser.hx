@@ -10,7 +10,7 @@ class HRParser {
 	static var varRegex:EReg = ~/:([A-Za-z_][A-Za-z0-9_]+):/gi;
 	// static var taskVarRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+)/gi;
 	static var taskArgsRegex:EReg = ~/@([0-9]+)(?:\[(.*?)\])?/gi;
-	static var templatesRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+\([^\)]+\))/gi;
+	static var templatesRegex:EReg = ~/@([A-Za-z_][A-Za-z0-9_]+\([^\)]*\))/gi;
 
 	//Maps the variables to their values
 	var variables:Map<String,String>;
@@ -173,6 +173,7 @@ class HRParser {
 									logError('The template "${id}" already exists!');
 								}
 								else {
+									//Do we have a valid parameter array thus a vaild template declaration?
 									if(parameterArray != null){
 										if(inParameterList){
 											logError("Expected ')'", tk);
@@ -210,7 +211,7 @@ class HRParser {
 				if(section == ConfigSection.templates){
 					if(previous().type == HRToken.identifier) {
 						inParameterList = true; 
-						parameterArray = new Array<String>();
+						parameterArray = [];
 					}
 				}
 				else{
@@ -296,12 +297,19 @@ class HRParser {
 				paramGlob = paramGlob.substr(0, paramGlob.length -1);
 				paramGlob = paramGlob.trim();
 
-				// trace('templateName: ${templateName} other: ${paramGlob}');
-				//trace('full: ${templateName}(${reg.matched(2)})');
+				trace('found template: ${templateName} params: ${paramGlob}');
+				trace('full: ${templateName}(${reg.matched(2)})');
 
 				if(templates.exists(templateName)){
 					//See if there are any parameters
-					var params:Array<String> = paramGlob.split(",");
+					var params:Array<String>;
+					
+					//Are there some parameters to this template call?
+					if(paramGlob.length > 0)
+					 	params = paramGlob.split(",");
+					else
+						params = [];
+
 					for(i in 0 ... params.length){
 						params[i] = params[i].trim();
 					}
@@ -318,7 +326,7 @@ class HRParser {
 					return reg.matched(0);
 				}
 			});
-			//trace('=>:${taskSequence[i].text}');
+			trace('=>:${taskSequence[i].text}');
 		}
 	}
 
