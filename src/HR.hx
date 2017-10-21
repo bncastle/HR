@@ -18,7 +18,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.71";
+	static inline var VERSION = "0.72";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -477,11 +477,26 @@ class HR
 	function PrintAvailableTasks(cfgFilename:String){
 		log('');
 		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}"');
+		
+		var sortedTasks:Array<String> = [];
+
+		//Prepare to sort the tasks
 		for	(taskName in parser.tasks.keys()){
-			//Only show tasks that arent "hidden"
-			//a task beginning with an underscore '_' is hidden
-			//and wont be displayed but it can still be executed
+			//Only grab tasks that arent "hidden". Tasks beginning with 
+			//an underscore '_' are hidden and wont be displayed but it can still be executed
 			if(taskName.charCodeAt(0) != '_'.code)
+				sortedTasks.push(taskName);
+		}
+
+		sortedTasks.sort(function(a,b){
+			if(a<b) return -1;
+			else if(a>b) return 1;
+			else return 0;
+		});
+
+
+		//Now print the sorted tasks
+		for(taskName in sortedTasks){
 				log(taskName);
 		}
 	}
