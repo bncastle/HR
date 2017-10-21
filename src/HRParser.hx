@@ -71,6 +71,7 @@ class HRParser {
 		// trace('HRParser: Expanding variables within templates');
 		for(pt in templates){
 			ExpandVariablesWithinTemplate(pt);
+			ExpandTemplatesWithinTemplate(pt);
 		}
 
 		if(wasError) return;
@@ -283,6 +284,43 @@ class HRParser {
 		//  trace('Task:${parametrizedTask.name} => ${parametrizedTask.text} ');
 	}
 
+	function ExpandTemplatesWithinTemplate(template:Template){
+		if(template == null) return;
+
+		template.text = templatesRegex.map(template.text,
+		function(reg:EReg){
+				var templateName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
+				var paramGlob = reg.matched(1).substr(templateName.length + 1);
+				paramGlob = paramGlob.substr(0, paramGlob.length -1).trim();
+
+				if(templates.exists(templateName)){
+					//See if there are any parameters
+					var params:Array<String>;
+					
+					//Are there some parameters to this template call?
+					if(paramGlob.length > 0)
+					 	params = paramGlob.split(",");
+					else
+						params = [];
+
+					for(i in 0 ... params.length){
+						params[i] = params[i].trim();
+					}
+
+					var tmpl = templates[templateName];
+					var output:String = tmpl.call(params);
+
+					//TODO: Make sure the correct number of parameters are given
+					// if(tmpl.NumParams != params.length) 
+					return output;
+				}
+				else{
+					logError('Template: $templateName was not found!');
+					return reg.matched(0);
+				}
+		}
+		);
+	}
 	function ExpandTemplatesWithinTask(taskName:String){
 	 	if(taskName == null || taskName == "") return;
 		var taskSequence = tasks.get(taskName);
@@ -294,8 +332,7 @@ class HRParser {
 			function (reg:EReg){
 				var templateName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
 				var paramGlob = reg.matched(1).substr(templateName.length + 1);
-				paramGlob = paramGlob.substr(0, paramGlob.length -1);
-				paramGlob = paramGlob.trim();
+				paramGlob = paramGlob.substr(0, paramGlob.length -1).trim();
 
 				trace('found template: ${templateName} params: ${paramGlob}');
 				trace('full: ${templateName}(${reg.matched(2)})');
