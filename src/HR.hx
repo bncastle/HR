@@ -18,7 +18,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.72";
+	static inline var VERSION = "0.73";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -51,11 +51,11 @@ class HR
 		// for(t in toks)
 		//  trace('${t.type}: ${t.lexeme}');
 
-		var h = new HR();
 		var retCode:Int = 0;
 		//Grab the args (We'll be manipulating this) remove spaces and empty entries
 		var args = Sys.args().map(function(arg) {return arg.trim();}).filter(function(a){ return (a != null && a != "");});
 
+		var h = new HR(HR.isFlag(args, "-v"));
 		//Here we allow the user to specify a different config file name
 		//but it must end in .hr. Also, for now, it must be in the same directory
 		var cfgFile:String = h.getAlternateConfigName(args);
@@ -76,13 +76,10 @@ class HR
 			return -1;
 		}
 
-		//Verbose mode?
-		h.checkVerboseFlag(args);
-
 		//Get the task to execute
 		var taskName:String = h.checkForTaskName(args);
 
-		//Any args left will be sent to the task as taks args
+		//Any args left will be sent to the task as task args
 
 		//Parse the config file
 		if (!h.ParseConfig(cfgFile, args))
@@ -136,25 +133,27 @@ class HR
 		return retCode;
 	}
 
-	public function new()
+	public function new(isVerbose:Bool = true)
 	{
 		//Create a new parser
 		tokenizer = new HrTokenizer();
 		taskResults= new Map<String,String>();
 		dependencyMap= new Map<String,Array<String>>();
-
-		// byteBuffer = haxe.io.Bytes.alloc(1);
+		verbose = isVerbose;
 	}
 
-	//Checks for the presence of the verbose flag
-	function checkVerboseFlag(args:Array<String>):Void{
-		if(args == null || args.length == 0) return;
-		if(args[0] == '-v') {
-			args.splice(0,1);
-			verbose = true;
-			return;
+	//Checks for the presence of a flag
+	public static function isFlag(args:Array<String>, value:String):Bool{
+		if(args == null || args.length == 0) return false;
+		var i = args.length - 1;
+		while(i >= 0){
+			if(args[i] == value){
+				args.splice(i,1);
+				return true;
+			}
+			i--;
 		}
-		verbose = false;
+		return false;
 	}
 
 	function getAlternateConfigName(args:Array<String>):String {
@@ -476,8 +475,9 @@ class HR
 
 	function PrintAvailableTasks(cfgFilename:String){
 		log('');
-		log('Available Tasks in "${Path.withoutDirectory(cfgFilename)}"');
-		
+		log('Tasks in "${Path.withoutDirectory(cfgFilename)}"');
+		log("===================================");
+
 		var sortedTasks:Array<String> = [];
 
 		//Prepare to sort the tasks
