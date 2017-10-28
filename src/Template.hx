@@ -19,16 +19,25 @@ class Template{
 		}
 	}
 
-	public function check_parameters(inputParams:Array<String>):Bool{
-		if(inputParams == null || parameters.length != inputParams.length) { 
-			Sys.println('Template error: ${name} requires ${parameters.length} parameters but was only passed ${inputParams.length}!'); 
-			return false;
-		}
-		return true;
-	}
+	// public function check_parameters(inputParams:Array<String>):Bool{
+	// 	if(inputParams == null || parameters.length != inputParams.length) { 
+	// 		Sys.println('Template error: ${name} requires ${parameters.length} parameters but was only passed ${inputParams.length}!'); 
+	// 		return false;
+	// 	}
+	// 	return true;
+	// }
 
 	public function call(inputParams:Array<String>):String{
-		if(!check_parameters(inputParams)) return "";
+		// if(!check_parameters(inputParams)) return "";
+
+		//If there are less inputs than there are params, add blank ones
+		var diff:Int = NumParams - inputParams.length;
+		if(diff > 0){
+			trace('Template: $name called with less parameters than required. Making the rest blank.');
+			for(i in 0 ... diff){
+			inputParams.push("");
+			}
+		}
 
 		var newString:String = this.text;
 		//Parameters are specified in order
