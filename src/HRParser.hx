@@ -250,15 +250,22 @@ class HRParser {
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
 
+		trace('==== Expand Variables Within Task ====');
+
 		//Go through all the sequences in this task
+		trace('TaskName: $taskName');
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
+			trace('\tseq: $i => ${taskSequence[i].text}');
 			Expand(taskSequence[i], variables);
 		}
 	}
 
 	function ExpandVariablesWithinVariable(variableName:String){
 		if(variableName == null || variableName == "" || !variables.exists(variableName) ) return;
+
+		trace('==== Expand Variables Within Variable ====');
+
 		variables[variableName] = varRegex.map(variables[variableName], function(reg:EReg){
 			var vname = reg.matched(1);
 
@@ -273,6 +280,9 @@ class HRParser {
 
 	function ExpandVariablesWithinTemplate(parametrizedTask:Template){
 		if(parametrizedTask == null ) return;
+
+		trace('==== Expand Variables Within Templates ====');
+
 		parametrizedTask.text = varRegex.map(parametrizedTask.text, function(reg:EReg){
 			var variableName = reg.matched(1);
 			if(variables.exists(variableName)){
@@ -286,6 +296,8 @@ class HRParser {
 
 	function ExpandTemplatesWithinTemplate(template:Template){
 		if(template == null) return;
+
+		trace('==== Expand Templates Within Templates ====');
 
 		template.text = templatesRegex.map(template.text,
 		function(reg:EReg){
@@ -326,6 +338,8 @@ class HRParser {
 		var taskSequence = tasks.get(taskName);
 		if(taskSequence == null) return;
 
+		trace('==== Expand Templates Within Task ====');
+
 		for(i in 0 ... taskSequence.length){
 			if(taskSequence[i].isTaskRef) continue; //taskReferences don't get expanded
 			taskSequence[i].text = templatesRegex.map(taskSequence[i].text, 
@@ -363,7 +377,7 @@ class HRParser {
 					return reg.matched(0);
 				}
 			});
-			trace('=>:${taskSequence[i].text}');
+			// trace('=>:${taskSequence[i].text}');
 		}
 	}
 
@@ -386,7 +400,10 @@ class HRParser {
 			//If so, replace them with their replacement value
 			//otherwise, return the original text
 			for(key in replacements.keys()){
-				if(key == varName) return replacements[key];
+				if(key == varName) {
+					trace('variable: $varName => ${replacements[key]}');
+					return replacements[key];
+				}
 			}
 			return regex.matched(0);
 		});

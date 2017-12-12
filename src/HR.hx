@@ -18,7 +18,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.74";
+	static inline var VERSION = "0.75";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -45,11 +45,6 @@ class HR
 			log("Usage: HR.exe [-v] ['name of config file'.hr] <task_taskName>");
 			log("-v prints out each command as it is executed");
 		}
-
-		// var ht = new HrTokenizer();
-		// var toks = ht.parseText("test(");
-		// for(t in toks)
-		//  trace('${t.type}: ${t.lexeme}');
 
 		var retCode:Int = 0;
 		//Grab the args (We'll be manipulating this) remove spaces and empty entries
@@ -209,8 +204,11 @@ class HR
 		tokens = tokenizer.parseFile(cfgFile);
 
 		//Print out all our tokens
+		// Sys.println("=== Tokens ===");
 		// for(t in tokens)
-		// trace('${t.type}: ${t.lexeme}');
+		// 	trace('${t.type}: ${t.lexeme}');
+		// Sys.println("==============");
+
 
 		if(tokens != null && !tokenizer.wasError){
 			parser = HRParser.ParseTokens(tokens, taskArgs);
