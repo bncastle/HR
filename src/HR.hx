@@ -1,6 +1,7 @@
 import sys.FileSystem;
 import sys.io.Process;
 import haxe.io.Path;
+import haxe.io.BytesBuffer;
 using StringTools;
 
 // @author: Pixelbyte Studios
@@ -18,7 +19,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.75";
+	static inline var VERSION = "0.76";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -407,11 +408,11 @@ class HR
 	// 	}
 	// }
 
-	function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, stringPipe:StringBuf) : Bool{
+	function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, bytePipe:BytesBuffer) : Bool{
 		try{
-			var ch = sourceInput.readString(1);
-			filePipe.writeString(ch);
-			stringPipe.add(ch);
+			var b = sourceInput.readByte();
+			filePipe.writeByte(b);
+			bytePipe.addByte(b);
 			return true;
 		}
 		catch(e:Dynamic){
@@ -428,8 +429,8 @@ class HR
 		var proc = new Process(cmd);
 		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
-		var iserror:Bool = false;
-		var output:StringBuf = new StringBuf();
+		 var iserror:Bool = false;
+		var output = new BytesBuffer();
 
 		//proc.exitCode(false) doesn't work in WINDOWS
 		//so I've tapped into the winapi in order to
@@ -450,12 +451,23 @@ class HR
 		closeHandle(procHandle);
 
 		//Get any leftover output from the process
-		var leftover = proc.stdout.readAll().toString();
-		output.add(leftover);
-		if(showOutput) Sys.print(leftover);
-		leftover = proc.stderr.readAll().toString();
-		if(showOutput) Sys.print(leftover);
-		output.add(leftover);
+		try {
+			var leftover = proc.stdout.readAll();
+			if(leftover != null && leftover.length > 0){
+				output.add(leftover);
+				if(showOutput) Sys.print(leftover.getString(0, leftover.length));
+			}
+		}
+		catch(e:Dynamic){}
+
+		try {
+			var leftover = proc.stderr.readAll();
+			if(leftover != null && leftover.length > 0){
+				output.add(leftover);
+				if(showOutput) Sys.print(leftover.getString(0, leftover.length));
+			}
+		}
+		catch(e:Dynamic){}
 
 		//When the process is done (i.e. no more output written to stdout or stderr), get the exit code
 		var retcode:Int = proc.exitCode();
@@ -463,8 +475,8 @@ class HR
 
 		 if(output.length > 0){
 		 	if(taskName != null){
-		 		// trace('Set results for $taskName => |$output|');
-		 		taskResults.set(taskName, output.toString().rtrim());
+		 		var outString = output.getBytes().getString(0, output.length).rtrim();
+		 		taskResults.set(taskName, outString);
 		 	}
 		 }
 
