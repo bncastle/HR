@@ -264,8 +264,8 @@ class HRParser {
 	function ExpandVariablesWithinVariable(variableName:String){
 		if(variableName == null || variableName == "" || !variables.exists(variableName) ) return;
 
-		trace('==== Expand Variables Within Variable ====');
-
+		trace('==== Expand Variables Within $variableName ====');
+		trace('Pre-expand: ${variables[variableName]}');
 		variables[variableName] = varRegex.map(variables[variableName], function(reg:EReg){
 			var vname = reg.matched(1);
 
@@ -273,9 +273,9 @@ class HRParser {
 				return variables[vname];
 			}
 			else
-				return variables[variableName];
+				return reg.matched(0);
 		});
-		//trace('Variable:$variableName => $value => ${variables[variableName]}');
+		trace('Post-expanded: ${variables[variableName]}');
 	}
 
 	function ExpandVariablesWithinTemplate(parametrizedTask:Template){
@@ -289,7 +289,7 @@ class HRParser {
 				return variables[variableName];
 			}
 			else
-				return parametrizedTask.text;
+				return reg.matched(0);
 		});
 		//  trace('Task:${parametrizedTask.name} => ${parametrizedTask.text} ');
 	}
@@ -449,11 +449,11 @@ class HRParser {
 					else return default_value;
 				else{
 					logError('Unable to find arg ${argIndex + 1}. Did you specify args on the cmd line?');
-					return res.text;
+					return reg.matched(0);
 				}
 			}
 			logError('Not a valid task cmd line argument!: ${variableName}');
-			return res.text;
+			return reg.matched(0);
 		});
 		// trace('body: ${res.text}');
 	}
@@ -467,7 +467,7 @@ class HRParser {
 				return variables[vname];
 			}
 			else
-				return variables[variableName];
+				return reg.matched(0);
 		});
 		//trace('Variable:$variableName => $value => ${variables[variableName]}');
 	}
