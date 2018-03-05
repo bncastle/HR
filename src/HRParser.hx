@@ -349,7 +349,7 @@ class HRParser {
 				paramGlob = paramGlob.substr(0, paramGlob.length -1).trim();
 
 				trace('found template: ${templateName} params: ${paramGlob}');
-				trace('full: ${templateName}(${reg.matched(2)})');
+				trace('full: ${templateName}(${reg.matched(1)})');
 
 				if(templates.exists(templateName)){
 					//See if there are any parameters

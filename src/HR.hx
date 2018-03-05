@@ -2,6 +2,7 @@ import sys.FileSystem;
 import sys.io.Process;
 import haxe.io.Path;
 import haxe.io.BytesBuffer;
+import haxe.io.Bytes;
 using StringTools;
 
 // @author: Pixelbyte Studios
@@ -19,7 +20,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.77";
+	static inline var VERSION = "0.78";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -410,9 +411,14 @@ class HR
 
 	function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, bytePipe:BytesBuffer) : Bool{
 		try{
-			var b = sourceInput.readByte();
-			filePipe.writeByte(b);
-			bytePipe.addByte(b);
+			var buffer = Bytes.alloc(1024);
+			var amountRead = sourceInput.readBytes(buffer, 0, 1024);
+			trace('Amount Read $amountRead');
+			filePipe.writeBytes(buffer, 0, amountRead);
+			bytePipe.addBytes(buffer, 0, amountRead);
+			// var b = sourceInput.readByte();
+			// filePipe.writeByte(b);
+			// bytePipe.addByte(b);
 			return true;
 		}
 		catch(e:Dynamic){
@@ -429,7 +435,7 @@ class HR
 		var proc = new Process(cmd);
 		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
-		 var iserror:Bool = false;
+		var iserror:Bool = false;
 		var output = new BytesBuffer();
 
 		//proc.exitCode(false) doesn't work in WINDOWS
