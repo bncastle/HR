@@ -20,7 +20,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.78";
+	static inline var VERSION = "0.79";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -46,23 +46,35 @@ class HR
 			log("===================================");
 			log("Usage: HR.exe [-v] ['name of config file'.hr] <task_taskName>");
 			log("-v prints out each command as it is executed");
+			log("-p prints all available .hr task files in the current directory");
 		}
 
 		var retCode:Int = 0;
+
 		//Grab the args (We'll be manipulating this) remove spaces and empty entries
 		var args = Sys.args().map(function(arg) {return arg.trim();}).filter(function(a){ return (a != null && a != "");});
 
+		//Check for any flags that do other things
+
+		if(HR.isFlag(args, "-p")){
+			//Print all HR task files in the directory where we were invoked
+			printAllFoundConfigFiles(Sys.getCwd());
+			return 0;
+		}
+
 		var h = new HR(HR.isFlag(args, "-v"));
-		//Here we allow the user to specify a different config file name
+
+		//Here we allow the user to specify a different task file name
 		//but it must end in .hr. Also, for now, it must be in the same directory
 		var cfgFile:String = h.getAlternateConfigName(args);
 		if(cfgFile == null){
-			//Note: We want the config file in the directory where we were invoked!
+			//Note: We want the HR task file in the directory where we were invoked!
 			cfgFile = HR.findDefaultorFirstConfigFile(Sys.getCwd());
 		}
 
 		if(cfgFile != null)
 			log('Using file: $cfgFile');
+
 		//Add the full path to the config filename we found
 		cfgFile = Path.join([Sys.getCwd(), cfgFile]);
 
@@ -192,6 +204,18 @@ class HR
 			if(Path.extension(file) == "hr") return file;
 		}
 		return CFG_FILE;
+	}
+
+	static function printAllFoundConfigFiles(dir:String): Void {
+		var files = FileSystem.readDirectory(Path.directory(dir));
+		if(files == null || files.length == 0) return;
+		
+		//Sort alphabetically
+		files.sort(sortAlphabetically);
+		
+		for(file in files){
+			if(Path.extension(file) == "hr") Sys.println(file);
+		}
 	}
 
 	static function sortAlphabetically(a:String, b:String): Int{
@@ -357,7 +381,10 @@ class HR
 			//See if this task is just a task reference. If it is, run it
 			if(tasks[i].isTaskRef){
 				retCode = RunTask(tasks[i].text);
-				if(retCode != 0) return retCode;
+				if(retCode != 0) {
+					log('Task ${tasks[i].text} returned: $retCode');
+					return retCode;
+					}
 			}
 			else { //Must be a command
 				//See if the command has any references to other task outputs
@@ -367,7 +394,10 @@ class HR
 					for(t in taskRefs){
 						if(!taskResults.exists(t)){
 							retCode = RunTask(t);
-							if(retCode != 0) return retCode;
+							if(retCode != 0){
+								log('Task ${tasks[i].text} returned: $retCode');
+								return retCode;
+							}
 						}
 					}
 				}
@@ -379,7 +409,10 @@ class HR
 				//Run the command and if it fails, bail
 				var retCode = RunCommand(taskName, tasks[i].text, showOutput);
 				// trace('retCode: $retCode');
-				if (retCode != 0) return retCode;
+				if (retCode != 0) {
+					log('Task ${tasks[i].text} returned: $retCode');
+					return retCode;
+				}
 			}
 		}
 		return retCode;
@@ -392,23 +425,6 @@ class HR
 		return false;
 	}
 
-	// function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, stringPipe:StringBuf) : Bool{
-	// 	try{
-	// 		if(sourceInput.readBytes(byteBuffer, 0 ,1) <= 0)
-	// 			return false;
-	// 		else{
-	// 			filePipe.writeByte(byteBuffer.get(0));
-	// 			stringPipe.addChar(byteBuffer.get(0));
-	// 			// if(byteBuffer.get(0) == '\n'.code) return false;
-	// 			return true;
-	// 		}
-	// 	}
-	// 	catch(e:Dynamic){
-	// 		// Sys.print('!');			
-	// 		return false;
-	// 	}
-	// }
-
 	function Pipe(sourceInput:haxe.io.Input, filePipe:haxe.io.Output, bytePipe:BytesBuffer) : Bool{
 		try{
 			var buffer = Bytes.alloc(1024);
@@ -416,9 +432,6 @@ class HR
 			trace('Amount Read $amountRead');
 			filePipe.writeBytes(buffer, 0, amountRead);
 			bytePipe.addBytes(buffer, 0, amountRead);
-			// var b = sourceInput.readByte();
-			// filePipe.writeByte(b);
-			// bytePipe.addByte(b);
 			return true;
 		}
 		catch(e:Dynamic){
@@ -432,14 +445,14 @@ class HR
 			log('\nRunTask: ${taskName} => ${cmd}');
 		}
 
+		// var proc = new Process('cmd.exe /C "' + cmd + '"');
 		var proc = new Process(cmd);
 		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
 		var iserror:Bool = false;
 		var output = new BytesBuffer();
 
-		//proc.exitCode(false) doesn't work in WINDOWS
-		//so I've tapped into the winapi in order to
+		//proc.exitCode(false) doesn't work in WINDOWS so I've tapped into the winapi in order to
 		//report output from the process as it happens
 		while(procRunning(procHandle)){
 			if(!iserror && !Pipe(proc.stdout, Sys.stdout(), output)) iserror = true;
