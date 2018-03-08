@@ -1,6 +1,7 @@
 using StringTools;
-
-enum ConfigSection{ none; variables; tasks; templates;}
+using sys.FileSystem;
+using haxe.io.Path;
+enum ConfigSection{ none; use; variables; tasks; templates;}
 
 class HRParser {
 
@@ -16,6 +17,12 @@ class HRParser {
 	var variables:Map<String,String>;
 	//These are args specified on that command line that are passed to our task
 	var task_args:Array<String>;
+	
+	//Contains a list of files we need to import but have not yet
+	var toImport:Array<String>;
+
+	//Contains all files that have been imported
+	var imported:Array<String>;
 
 	//Maps the task name to its command
 	public var tasks(default,null):Map<String,Array<Result>>;
@@ -27,37 +34,30 @@ class HRParser {
 
 	public var wasError(default,null):Bool;
 
-	private function new(taskArgs:Array<String>){
+	public function new(taskArgs:Array<String>){
 		variables = new Map<String,String>();
 		task_args = taskArgs;
 		tasks = new Map<String,Array<Result>>();
 		templates = new Map<String, Template>();
 		undefinedTasks = new Array<String>();
+		imported= new Array<String>();
+		// toImport = new Array<String>();
 		wasError = false;
 
-		//Special variables that are set by HR and encased between a '_' on each end 
 		var cwd = Sys.getCwd();
+		//Make sure to remove any trailing '/' from cwd
 		if(cwd.charAt(cwd.length -1 ) == '/'){
 			cwd = cwd.substr(0, cwd.length - 1);
-			cwd += '\\';
 		}
 
+		//Special variables that are set by HR and encased between a '_' on each end 
 		///Set any internally-defined variables here:
 		variables.set("_cwd_", cwd);
+		variables.set("_hrd_", Path.directory(Sys.programPath()));
 	}
 
-	public static function ParseTokens(tokens:Array<Token>, taskArgs:Array<String>):HRParser{
-		var parser = new HRParser(taskArgs);
-		if(parser.Parse(tokens) && !parser.wasError) {	
-			parser.ExpandVariablesAndArgs();
-			if(parser.wasError) return null;		
-			return parser;
-		}
-		else return null;
-	}
-
-	function ExpandVariablesAndArgs() {
-		if(wasError) return;
+	function ExpandVariablesAndArgs():Bool {
+		if(wasError) return false;
 
 		//Expand out all the variable references in the tasks' commands
 		// trace('HRParser: Expanding variables within variables');
@@ -66,7 +66,7 @@ class HRParser {
 			ExpandTaskArgsWithinVariable(v);
 		}
 
-		if(wasError) return;
+		if(wasError) return  false;
 
 		// trace('HRParser: Expanding variables within templates');
 		for(pt in templates){
@@ -74,13 +74,15 @@ class HRParser {
 			ExpandTemplatesWithinTemplate(pt);
 		}
 
-		if(wasError) return;
+		if(wasError) return  false;
 
 		// trace('HRParser: Expanding templates within task and variables within tasks');
 		for(task in tasks.keys()){
 			ExpandTemplatesWithinTask(task);
 			ExpandVariablesWithinTask(task);
 		}
+
+		return wasError;
 	}
 
 	//Use this function to log errors in this class
@@ -93,13 +95,46 @@ class HRParser {
 		wasError = true;
 	}	
 
-	private function Parse(tokens:Array<Token>):Bool{
+	function log(msg:Dynamic, ?t:Token = null){
+		if(t == null)
+			Sys.println('Info ${msg}');
+		else
+			Sys.println('Info [${t.line}:${t.column}] ${msg}');
+	}	
+
+	//
+	//Parses the given file. Returns true on success, false otherwise
+	//
+	public function ParseFile(filename:String):Bool{
+		filename = Path.normalize(FileSystem.absolutePath(filename));
+		var tokenizer = new HrTokenizer();
+		var tokens:Array<Token>;
+
+		do{
+			trace('--- Parsing Filename: $filename ---');
+
+			//Put it in the list of imported files (we dont want to reimport twice)
+			imported.push(filename);
+
+			tokens = tokenizer.parseFile(filename);
+			Parse(tokens);
+			filename = toImport.shift();
+		}while(!wasError && !tokenizer.wasError && filename != null);
+
+		if (!tokenizer.wasError)
+			return !ExpandVariablesAndArgs();
+		return !wasError && !tokenizer.wasError;
+	}
+
+	function Parse(tokens:Array<Token>):Bool{
 		if(tokens == null || tokens.length < 1){
-			logError("No tokens to parse!");
+			log("No tokens to parse!");
 			return false;
 		}
 
-		//tells which section we're in 0 = variables, 1 = commands
+		toImport = new Array<String>();
+
+		//tells which section we're in
 		var section:ConfigSection = ConfigSection.none;
 		var id:String = "";
 		var inArray:Int = 0;
@@ -128,6 +163,8 @@ class HRParser {
 					section = ConfigSection.tasks;
 				case HRToken.templateSection:
 					section = ConfigSection.templates;
+				case HRToken.useSection:
+					section = ConfigSection.use;
 				case HRToken.identifier:
 						if(section == ConfigSection.templates){
 							if(!inParameterList){
@@ -190,6 +227,16 @@ class HRParser {
 									}
 								}
 							}
+							else if(section == ConfigSection.use){
+								var useFilename = findFile(tk.lexeme);
+								if(useFilename != null){
+									if(imported.indexOf(useFilename) > -1)
+									  	log('Ignoring already imported: ${useFilename}');
+									else{
+										toImport.push(useFilename);
+									}
+								}
+							}
 							else{
 								logError("Invalid section type!");
 							}
@@ -242,6 +289,50 @@ class HRParser {
 			}
 		}
 		return status;
+	}
+
+	//
+	// Tries to locate a file of the given filename using 1st
+	// the current working directory, then the HR.exe directory
+	// returns the full path if it exists, otherwise, null
+	function findFile(name: String) : String{
+		if(name == null || name == ""){
+			logError('filename was null!');
+			return null;
+		}
+
+		if(Path.isAbsolute(name)){
+			name = Path.normalize(name);
+			if(FileSystem.isDirectory(name)){
+				logError('Filename expected but found directory: $name');
+				return null;
+			}
+			else if(!FileSystem.exists(name)){
+				logError('File not found: $name');
+				return null;
+			}
+			else
+				return name;		
+		}
+		else{
+			//Search in the current directory where this file is located first
+			var cwdPath = Path.normalize(FileSystem.absolutePath(name));
+			if(!FileSystem.exists(cwdPath)){
+				
+				//Try for a path relative to the hr.exe
+				var hrRelPath = Path.normalize(Path.join([variables["_hrd_"], name]));
+				if(!FileSystem.exists(hrRelPath)){
+					logError('Unable to find file: $name \nSearched: ${cwdPath}\n${hrRelPath}');
+					return null;
+				}
+				else{
+					return hrRelPath;
+				}
+			}
+			else{
+				return cwdPath;
+			}
+		}
 	}
 
 	//Expand all variables found within a tasks results

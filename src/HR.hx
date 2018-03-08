@@ -20,7 +20,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.79";
+	static inline var VERSION = "0.80";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -29,9 +29,7 @@ class HR
  	static inline var ERR_ILLEGAL_TASK_REF= -1028;
 
 	var verbose:Bool = false;
-	var tokenizer(default,null):HrTokenizer;
 	var parser:HRParser;
-	var tokens:Array<Token>;
 	var taskResults:Map<String,String>;
 	var dependencyMap:Map<String,Array<String>>;
 
@@ -91,7 +89,8 @@ class HR
 		//Any args left will be sent to the task as task args
 
 		//Parse the config file
-		if (!h.ParseConfig(cfgFile, args))
+		h.parser = new HRParser(args);
+		if (!h.parser.ParseFile(cfgFile))
 		{
 			error('config file issues\n');
 			return -1;
@@ -144,8 +143,6 @@ class HR
 
 	public function new(isVerbose:Bool = true)
 	{
-		//Create a new parser
-		tokenizer = new HrTokenizer();
 		taskResults= new Map<String,String>();
 		dependencyMap= new Map<String,Array<String>>();
 		verbose = isVerbose;
@@ -226,21 +223,12 @@ class HR
 		else return 0;
 	}
 
-	function ParseConfig(cfgFile:String, taskArgs:Array<String>): Bool{
-		tokens = tokenizer.parseFile(cfgFile);
-
-		//Print out all our tokens
-		// Sys.println("=== Tokens ===");
-		// for(t in tokens)
-		// 	trace('${t.type}: ${t.lexeme}');
-		// Sys.println("==============");
-
-
-		if(tokens != null && !tokenizer.wasError){
-			parser = HRParser.ParseTokens(tokens, taskArgs);
-			return (parser != null && !parser.wasError);
-		}
-		else return false;
+	private function printTokens(tokens:Array<Token>){
+		// Print out all our tokens
+		Sys.println("=== Tokens ===");
+		for(t in tokens)
+			trace('${t.type}: ${t.lexeme}');
+		Sys.println("==============");
 	}
 
 	static function error(msg:Dynamic){

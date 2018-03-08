@@ -3,7 +3,7 @@ enum HRToken{
 	//Single-character tokens
     leftBracket; rightBracket; equals; comma; leftParen; rightParen;
 	//Keywords
-	variableSection; taskSection; templateSection;
+	variableSection; taskSection; templateSection; useSection;
 	//DataTypes
 	identifier; value;
 	//other

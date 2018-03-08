@@ -6,7 +6,7 @@ class HrTokenizer{
     
 	static var WHITESPACE:Array<Int> = ["\t".code, " ".code, "\r".code];
 	static var LINE_BREAKS:Array<Int> = ["\n".code, "\r".code];
-	static var KEYWORDS:Map<String,HRToken> = [ "variables" => HRToken.variableSection, "tasks" => HRToken.taskSection, "templates" => HRToken.templateSection];
+	static var KEYWORDS:Map<String,HRToken> = [ "variables" => HRToken.variableSection, "tasks" => HRToken.taskSection, "templates" => HRToken.templateSection, "use" => HRToken.useSection];
 
 	var content:String;
 	var tokens:Array<Token>;
@@ -98,14 +98,17 @@ class HrTokenizer{
 	}
 
 	function addToken(t:HRToken){
-		//  trace('Add ${t} |${lexeme}|');
+		// trace('Add ${t} |${lexeme}|');
 		tokens.push(new Token(t, line, col - lexemeLength, lexeme));
 	}
 	function removeLastToken(){
+		// trace('Remove ${tokens[tokens.length - 1].type} |${tokens[tokens.length - 1].lexeme}|');
 		tokens.pop();
 	}
 
 	function getTokens(){
+		var useSection:Bool = false;
+
 		while(!isEof()){
 			eat(WHITESPACE);
 			start = index;
@@ -115,6 +118,7 @@ class HrTokenizer{
 			if(c == '-'.code && peek() == '-'.code && col == 2){
 				nextChar();
 				addToken(HRToken.double_dash);
+				useSection = false;
 				continue;
 			}
 
@@ -183,6 +187,12 @@ class HrTokenizer{
 							}
 					}
 					else if (isAlpha(c) || c == '_'.code){
+						if(useSection){
+							matchUntil(WHITESPACE);
+							addToken(HRToken.value);
+							continue;
+						}
+
 						matchIdentifier();
 						if(lexemeLength > 0){
 							//is it a keyword?
@@ -192,23 +202,31 @@ class HrTokenizer{
 									//Remove the double dash as the parser does not need it
 									removeLastToken();
 									addToken(t);
+
+									if(t == HRToken.useSection)
+										useSection = true;
+									else
+										useSection = false;
 								}
-								else
+								else{
 									logError('Is "$lexeme" a section header? If so, it must be:--$lexeme');
+								}
 							}
 							else{ //It must be an identifier
 								//Was there another identifier before this one? That isn't allowed
 								if(prevTokenType == HRToken.identifier){
 									logError("Expected an =, not another identifier");
 								}
-								else
+								else{
+									if(prevTokenType == HRToken.double_dash)
+										logError('Expected one of [variables, tasks, templates, use] after "--" found $lexeme');
 									addToken(HRToken.identifier);
+								}
 							}
 						}
 					}
-					else{
-						logError('Unrecognized token: ${lexeme}');
-					}	
+					else
+						logError('Unrecognized token: ${lexeme}');	
 			}
 		}
 	}

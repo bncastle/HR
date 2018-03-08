@@ -5,7 +5,7 @@
     ExeName= hr.exe
 --tasks 
     build = haxe build.hxml
-    build_dbg = haxe -cp src -main HR -cpp bin -dce full
+    buildDbg = haxe -cp src -main HR -cpp bin -dce full
     _pack = :UPX: .\bin\:ExeName:
     _deploy = [
         if exist :DestDir:\:ExeName:.old del :DestDir:\:ExeName:.old
@@ -13,4 +13,4 @@
         copy /Y .\bin\:ExeName: :DestDir:
     ]
     buildDeploy = [:build, :_pack, :_deploy]
-    buildDeployDbg = [:build_dbg, :_pack, :_deploy]
+    buildDeployDbg = [:buildDbg, :_pack, :_deploy]

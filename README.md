@@ -30,6 +30,7 @@ There are some system-defined variables that are defined regardless of the hr co
 any script. Below are all the currently-defined system variables:
 
 `_cwd_ => outputs the current working directory`
+`_hrd_ => outputs the location of the hr executable`
 
 Tasks can be hidden from being listed by beginning their name with an underscore '_'. This will cause them to not appear in the available task listing, but they can still be executed. This provides a way to keep any "internal" tasks from being displayed in the listings.
 
@@ -40,7 +41,12 @@ An example `config.hr` file is shown below:
 ```php
     #comments look like this and are allowed outside sections, and between tasks and variables
     #There are two specific sections that are allowed in a config.hr file: variables and tasks
-    #The variables section is optional and does not need to be defined if it is not needed
+    #The use and variables section is optional and does not need to be defined if it is not needed
+    --use
+        #use other hr files here
+        #files that don't have an absolute path will be searched from the path of the file in which they are
+        #included first, then where the HR executable is located. Any duplicate use files are ignored
+        default.hr
     --variables
         #This sets the name of our zip file
         zipName = TestPackage
