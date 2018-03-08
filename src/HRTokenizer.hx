@@ -178,6 +178,16 @@ class HrTokenizer{
 									logError('Expected a taskName identifier after :');
 								}
 							}
+							//Is it a template perhaps?
+							else if(c == '@'.code){
+								matchUntil([')'.code, ']'.code]);
+								if(lexemeLength > 0){
+									match(')'.code);
+									addToken(HRToken.value);
+								}
+								else
+									logError('Expected a template call!');
+							}
 							else{ //otherwise, it must a full command
 								matchUntil(LINE_BREAKS);
 								if(lexemeLength > 0)

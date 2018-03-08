@@ -117,6 +117,8 @@ class HRParser {
 			imported.push(filename);
 
 			tokens = tokenizer.parseFile(filename);
+			// PrintTokens(tokens);
+
 			Parse(tokens);
 			filename = toImport.shift();
 		}while(!wasError && !tokenizer.wasError && filename != null);
@@ -124,6 +126,14 @@ class HRParser {
 		if (!tokenizer.wasError)
 			return !ExpandVariablesAndArgs();
 		return !wasError && !tokenizer.wasError;
+	}
+
+	function PrintTokens(tokens:Array<Token>){
+		//Print out all our tokens
+		Sys.println('=== Tokens ===');
+		for(t in tokens)
+			trace('${t.type}: ${t.lexeme}');
+		Sys.println("==============");
 	}
 
 	function Parse(tokens:Array<Token>):Bool{

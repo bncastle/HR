@@ -1,3 +1,6 @@
+--use
+default.hr
+
 #This is an HR file for building the HR executable
 --variables
     UPX = c:\utils\upx.exe -9
@@ -10,7 +13,11 @@
     _deploy = [
         if exist :DestDir:\:ExeName:.old del :DestDir:\:ExeName:.old
         if exist :DestDir:\:ExeName: ren :DestDir:\:ExeName: :ExeName:.old
-        copy /Y .\bin\:ExeName: :DestDir:
+        @copy(.\bin\:ExeName:, :DestDir:)
     ]
+
     buildDeploy = [:build, :_pack, :_deploy]
     buildDeployDbg = [:buildDbg, :_pack, :_deploy]
+    deployNet = [@copy(.\bin\:ExeName:, :HrNetDir:)]
+--templates
+copy(src,dest) = copy /Y $src $dest
