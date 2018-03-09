@@ -164,8 +164,8 @@ class HrTokenizer{
 										logError("keywords are not allowed here");
 									}
 									else if(peek() == ':'.code) {
-										//We have a variable or task output ref so it must be a full command
-										matchUntil(LINE_BREAKS);
+										//We have a variable or task output ref so it must not be a command
+										matchUntil([','.code, ']'.code]);
 										//Make sure to include the ':' in the token we save here. We want the whole thing
 										start--;
 										addToken(HRToken.value);

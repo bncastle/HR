@@ -4,7 +4,7 @@ default.hr
 #This is an HR file for building the HR executable
 --variables
     UPX = c:\utils\upx.exe -9
-    DestDir = C:\utils
+    DestDir = C:\utils\hr
     ExeName= hr.exe
 --tasks 
     build = haxe build.hxml
@@ -19,5 +19,3 @@ default.hr
     buildDeploy = [:build, :_pack, :_deploy]
     buildDeployDbg = [:buildDbg, :_pack, :_deploy]
     deployNet = [@copy(.\bin\:ExeName:, :HrNetDir:)]
---templates
-copy(src,dest) = copy /Y $src $dest

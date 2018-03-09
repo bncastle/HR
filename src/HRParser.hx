@@ -384,7 +384,7 @@ class HRParser {
 
 		trace('==== Expand Variables Within Templates ====');
 
-		parametrizedTask.text = varRegex.map(parametrizedTask.text, function(reg:EReg){
+		parametrizedTask.body = varRegex.map(parametrizedTask.body, function(reg:EReg){
 			var variableName = reg.matched(1);
 			if(variables.exists(variableName)){
 				return variables[variableName];
@@ -400,7 +400,7 @@ class HRParser {
 
 		trace('==== Expand Templates Within Templates ====');
 
-		template.text = templatesRegex.map(template.text,
+		template.body = templatesRegex.map(template.body,
 		function(reg:EReg){
 				var templateName = reg.matched(1).substr(0, reg.matched(1).indexOf('('));
 				var paramGlob = reg.matched(1).substr(templateName.length + 1);

@@ -2,14 +2,14 @@
 class Template{
     
 	public var name(default, null):String;
-	public var text:String;
+	public var body:String;
 	public var parameters:Array<String>;
 	public var NumParams(get, null):Int;
 	function get_NumParams():Int{return parameters.length;}
 
 	public function new(templateName:String, text:String, params:Array<String>){
 		name = templateName;
-		this.text = text;
+		body = text;
 		parameters = [];
 		if(params != null){
 			for(p in params){
@@ -39,7 +39,7 @@ class Template{
 			}
 		}
 
-		var newString:String = this.text;
+		var newString:String = body;
 		//Parameters are specified in order
 		// static var varRegex:EReg = ~/@([A-Za-z0-9_]+)/gi;
 		for(i in 0...parameters.length ){
@@ -59,8 +59,8 @@ class Template{
 			sb.add(' ');
 		}
 
-		sb.add('Text: ');
-		sb.add(text);
+		sb.add('Bodyhr: ');
+		sb.add(body);
 
 		return sb.toString();
 	}
