@@ -1,6 +1,5 @@
 
 class Template{
-    
 	public var name(default, null):String;
 	public var body:String;
 	public var parameters:Array<String>;
@@ -11,10 +10,14 @@ class Template{
 		name = templateName;
 		body = text;
 		parameters = [];
+
+		//Check and make sure there are no duplicate parameters
 		if(params != null){
 			for(p in params){
 				if(parameters.indexOf(p) == -1)
 					parameters.push(p);
+				else
+					Sys.println('Duplicate parameter found: $p!');
 			}
 		}
 	}

@@ -20,7 +20,7 @@ typedef VoidPointer = cpp.RawPointer<cpp.Void>;
 @:cppInclude("Windows.h")
 class HR
 {
-	static inline var VERSION = "0.82";
+	static inline var VERSION = "0.83";
 	static inline var CFG_FILE = "config.hr";
 	static inline var STILL_ACTIVE = 259;
 	static inline var ERR_TASK_NOT_FOUND = -1025;
@@ -433,8 +433,8 @@ class HR
 			log('\nRunTask: ${taskName} => ${cmd}');
 		}
 
-		// var proc = new Process('cmd.exe /C "' + cmd + '"');
-		var proc = new Process(cmd);
+		var proc = new Process('cmd.exe /V /C "' + cmd + '"');
+		//var proc = new Process(cmd);
 		var procHandle:VoidPointer = getProcessHandle(proc.getPid());
 
 		var iserror:Bool = false;
