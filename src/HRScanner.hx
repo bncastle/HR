@@ -2,7 +2,7 @@ import sys.FileSystem;
 import sys.io.File;
 using StringTools;
 
-class HrTokenizer{
+class HRScanner{
     
 	static var WHITESPACE:Array<Int> = ["\t".code, " ".code, "\r".code];
 	static var LINE_BREAKS:Array<Int> = ["\n".code, "\r".code];

@@ -107,7 +107,7 @@ class HRParser {
 	//
 	public function ParseFile(filename:String):Bool{
 		filename = Path.normalize(FileSystem.absolutePath(filename));
-		var tokenizer = new HrTokenizer();
+		var tokenizer = new HRScanner();
 		var tokens:Array<Token>;
 
 		do{
