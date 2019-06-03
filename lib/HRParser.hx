@@ -1,3 +1,5 @@
+package lib;
+
 using StringTools;
 using sys.FileSystem;
 using haxe.io.Path;

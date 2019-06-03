@@ -1,3 +1,4 @@
+package lib;
 
 class Template{
 	public var name(default, null):String;

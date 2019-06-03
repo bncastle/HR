@@ -1,3 +1,5 @@
+package lib;
+
 import sys.FileSystem;
 import sys.io.File;
 using StringTools;

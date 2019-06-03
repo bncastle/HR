@@ -5,13 +5,16 @@ import haxe.io.BytesBuffer;
 import haxe.io.Bytes;
 using StringTools;
 
+//Grab our supporting classes
+import lib.*;
+
 // @author: Pixelbyte Studios
 //
 //The comments below are meant to utilize my Hix utility to compile/run
 //without needing a build.hxml or command line options. Hix can be found here:
 //https://github.com/bncastle/hix
 //
-//::hix -main HR -cpp bin --no-traces -dce full
+//::hix -cp src -main HR -cpp bin --no-traces -dce full -D exe_link -D analyzer
 //::hix:debug -main HR -cpp bin -dce full
 
 //c++ stuff

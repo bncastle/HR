@@ -1,3 +1,4 @@
+package lib;
 
 enum HRToken{
 	//Single-character tokens

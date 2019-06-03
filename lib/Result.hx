@@ -1,3 +1,4 @@
+package lib;
 
 class Result {
     
